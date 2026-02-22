@@ -1,0 +1,11 @@
+-Werror
+-Wextra
+-Wshadow
+-Wpointer-arith
+-Wcast-align
+-Wwrite-strings
+-Wredundant-decls
+-Wformat
+-Wformat-security
+-I./Include/
+-O2
