@@ -1,6 +1,7 @@
 #include <Scratch/Common.hpp>
 #include <Scratch/Blocks.hpp>
 #include <Lib/SIMDJson.h>
+#include <utility>
 #include <zip.h>
 
 using namespace simdjson;
@@ -35,7 +36,7 @@ int ScratchProject::ParseContents(void) {
     /* load everything */
     for (ondemand::object SpriteObject: this->ProjectJson["targets"]) {
         ScratchSprite Sprite(SpriteObject);
-        this->Sprites.push_back(Sprite);
+        this->Sprites.emplace_back(std::move(Sprite));
     }
     return 0;
 }

@@ -12,7 +12,7 @@ CPPFLAGS := \
 	-Wformat \
 	-Wformat-security \
 	-I $(SRC)/Include/ \
-	-O2 \
+	-O3 \
 	-msse
 
 LDFLAGS := \

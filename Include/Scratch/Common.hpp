@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 #include <iostream>
+#include <memory>
 #include <unordered_map>
 #include <zip.h>
 
@@ -25,57 +26,75 @@ class ScratchSprite {
             /* fetch basic sprite data */
             this->StageSprite = SpriteData["isStage"]->get_bool();
             this->Name = SpriteData["name"]->get_string().value();
-            /* Totals */
-            VariableCount = SpriteData["variables"]->count_fields();
-            ListCount = SpriteData["lists"]->count_fields();
-            BroadcastCount = SpriteData["broadcasts"]->count_fields();
-            BlockCount = SpriteData["blocks"]->count_fields();
-            std::cout << "Total loads: " << (VariableCount + ListCount + BroadcastCount + BlockCount) << std::endl;
             /* 
              * TODO: optimize these 
              * There's definitely a way to reduce the code size. I'm thinking that templates could possibly do the trick,
              * but I'd have to test that out first to confirm, and right now I am not willing as I have bigger fish to fry.
              * */
             /* same for variables */
-            ondemand::object VariableData = SpriteData["variables"]->get_object();
+            ondemand::object VariableData = SpriteData["variables"];
             for (ondemand::field VariableField : VariableData) {
-                std::string_view VariableKey = VariableField.escaped_key();
-                ScratchVariable Variable(SpriteData["variables"][VariableKey], this->StageSprite);
-                this->Variables.insert({VariableKey, Variable});
+                try {
+                    std::string VariableKey = std::string(VariableField.unescaped_key()->data());
+                    this->Variables.emplace(
+                        VariableKey,
+                        ScratchVariable(VariableField.value(), this->StageSprite)
+                    );
+                } catch (simdjson_error &Error) {
+                    std::cerr << "failed to load variable: " << Error.what() << std::endl;
+                    std::cerr << VariableField.value() << std::endl;
+                }
             }
             /* lists */
-            ondemand::object ListData = SpriteData["lists"]->get_object();
+            ondemand::object ListData = SpriteData["lists"];
             for (ondemand::field ListField : ListData) {
-                std::string_view ListKey = ListField.escaped_key();
-                ScratchList List(SpriteData["lists"][ListKey], this->StageSprite);
-                this->Lists.insert({ListKey, List});
+                try {
+                    std::string ListKey = std::string(ListField.unescaped_key()->data());
+                    this->Lists.emplace(
+                        ListKey,
+                        ScratchList(ListField.value(), this->StageSprite)
+                    );
+                } catch (simdjson_error &Error) {
+                    std::cerr << "failed to load list: " << Error.what() << std::endl;
+                    std::cerr << ListField.value() << std::endl;
+                }
             }
             /* broadcasts */
-            ondemand::object BroadcastData = SpriteData["broadcasts"]->get_object();
+            ondemand::object BroadcastData = SpriteData["broadcasts"];
             for (ondemand::field BroadcastField : BroadcastData) {
-                std::string_view BroadcastKey = BroadcastField.escaped_key();
-                ScratchBroadcast Broadcast(SpriteData["broadcasts"][BroadcastKey].value());
-                this->Broadcasts.insert({BroadcastKey, Broadcast});
+                try {
+                    std::string BroadcastKey = std::string(BroadcastField.unescaped_key()->data());
+                    this->Broadcasts.emplace(
+                        BroadcastKey,
+                        ScratchBroadcast(BroadcastField.value())
+                    );
+                } catch (simdjson_error &Error) {
+                    std::cerr << "failed to load broadcast: " << Error.what() << std::endl;
+                    std::cerr << BroadcastField.value() << std::endl;
+                }
             }
             /* blocks */
-            ondemand::object BlockData = SpriteData["blocks"]->get_object();
+            ondemand::object BlockData = SpriteData["blocks"];
             for (ondemand::field BlockField : BlockData) {
-                std::string_view BlockKey = BlockField.escaped_key();
-                ScratchBlock * Block = new ScratchBlock(*this, SpriteData["blocks"][BlockKey]->get_object());
-                this->Blocks.insert({BlockKey, Block});
+                try {
+                    std::string BlockKey = std::string(BlockField.unescaped_key()->data());
+                    this->Blocks.emplace(
+                        BlockKey,
+                        std::make_unique<ScratchBlock>(*this, BlockField.value())
+                    );
+                } catch (simdjson_error &Error) {
+                    std::cerr << "failed to load block: " << Error.what() << std::endl;
+                    std::cerr << BlockField.value() << std::endl;
+                }
             }
         }
-        size_t ListCount = 0;
-        size_t VariableCount = 0;
-        size_t BroadcastCount = 0;
-        size_t BlockCount = 0;
     private:
         bool StageSprite;
         std::string Name;
-        std::unordered_map<std::string_view, ScratchVariable> Variables;
-        std::unordered_map<std::string_view, ScratchList> Lists;
-        std::unordered_map<std::string_view, ScratchBroadcast> Broadcasts;
-        std::unordered_map<std::string_view, ScratchBlock *> Blocks;
+        std::unordered_map<std::string, ScratchVariable> Variables;
+        std::unordered_map<std::string, ScratchList> Lists;
+        std::unordered_map<std::string, ScratchBroadcast> Broadcasts;
+        std::unordered_map<std::string, std::unique_ptr<ScratchBlock>> Blocks;
         void DescendBlocks(ondemand::object BlocksObjects);
 };
 
