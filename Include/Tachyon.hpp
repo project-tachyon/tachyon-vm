@@ -1,5 +1,5 @@
-#ifndef __TACHYON_H
-#define __TACHYON_H
+#ifndef TACHYON_HPP
+#define TACHYON_HPP
 
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_render.h>

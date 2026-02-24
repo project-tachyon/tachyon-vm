@@ -3,7 +3,6 @@ OUT := tachyon
 
 CPP := clang++
 CPPFLAGS := \
-	-Werror \
 	-Wextra \
 	-Wshadow \
 	-Wpointer-arith \
@@ -13,7 +12,8 @@ CPPFLAGS := \
 	-Wformat \
 	-Wformat-security \
 	-I $(SRC)/Include/ \
-	-O2
+	-O2 \
+	-msse
 
 LDFLAGS := \
 	-lstdc++ \
@@ -26,11 +26,11 @@ CPP_OBJ := $(patsubst %.cpp, %.o, $(CPP_SRC))
 
 $(OUT): $(CPP_OBJ)
 	@echo "LD - $@"
-	@$(CPP) $(LDFLAGS) $^ -o $@
+	@$(CPP) $(CPPFLAGS) $(LDFLAGS) $^ -o $@
 
 %.o: %.c
-	@$(CPP) $(CPPFLAGS) -c $< -o $@ $(CPPFLAGS)
 	@echo "CPP - $<"
+	@$(CPP) $(CPPFLAGS) -c $< -o $@ $(CPPFLAGS)
 
 clean:
 	@rm -fdr $(CPP_OBJ) $(OUT)

@@ -1,10 +1,9 @@
-#include <Scratch.hpp>
-#include <Json.hpp>
-#include <cstdio>
-#include <iostream>
+#include <Scratch/Common.hpp>
+#include <Scratch/Blocks.hpp>
+#include <Lib/SIMDJson.h>
 #include <zip.h>
 
-using json = nlohmann::ordered_json;
+using namespace simdjson;
 using namespace std;
 
 int ScratchProject::ParseContents(void) {
@@ -16,9 +15,8 @@ int ScratchProject::ParseContents(void) {
         Close();
         return -1;
     }
-    /* i know it's very bad to allocate this all in one go but this works well for me as of right now */
     char * ProjectDataPointer = (char *)malloc(ProjectStat.size);
-    if (ProjectDataPointer == nullptr) {
+    if (unlikely(ProjectDataPointer == nullptr)) {
         Close();
         return -1;
     }
@@ -29,23 +27,14 @@ int ScratchProject::ParseContents(void) {
         return -1;
     }
     /* convert to json */
-    this->ProjectJson = json::parse(ProjectDataPointer);
+    ondemand::parser parser;
+    padded_string data(ProjectDataPointer, ProjectStat.size);
+    this->ProjectJson = parser.iterate(data);
     free(ProjectDataPointer);
     zip_fclose(ProjectJsonFile);
-    if (this->ProjectJson.empty() == true) {
-        /* project.json should never be empty */
-        Close();
-        return -1;
-    }
-    if (this->ProjectJson["targets"].empty() == true) {
-        /* project bug or unauthorized modification */
-        Close();
-        return -1;
-    }
     /* load everything */
-    size_t total_sprites = this->ProjectJson["targets"].size();
-    for(size_t i = 0; i < total_sprites; i++) {
-        ScratchSprite Sprite(this->ProjectJson["targets"][i]);
+    for (ondemand::object SpriteObject: this->ProjectJson["targets"]) {
+        ScratchSprite Sprite(SpriteObject);
         this->Sprites.push_back(Sprite);
     }
     return 0;

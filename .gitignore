@@ -1,5 +1,6 @@
-# Object files
+# C++ files
 *.o
+*.out
 
 # Tachyon
 tachyon
