@@ -1,11 +1,10 @@
 #include <Scratch/Common.hpp>
 #include <Scratch/Blocks.hpp>
 #include <Lib/SIMDJson.h>
-#include <utility>
 #include <zip.h>
 
 using namespace simdjson;
-using namespace std;
+using namespace Scratch;
 
 int ScratchProject::ParseContents(void) {
     /* get file size */
@@ -30,13 +29,13 @@ int ScratchProject::ParseContents(void) {
     /* convert to json */
     ondemand::parser parser;
     padded_string data(ProjectDataPointer, ProjectStat.size);
-    this->ProjectJson = parser.iterate(data);
+    ondemand::document ProjectJson = parser.iterate(data);
+    /* load everything */
+    for (ondemand::object SpriteObject: ProjectJson["targets"]) {
+        this->Sprites.push_back(std::make_unique<ScratchSprite>(SpriteObject));
+    }
+    /* we are done */
     free(ProjectDataPointer);
     zip_fclose(ProjectJsonFile);
-    /* load everything */
-    for (ondemand::object SpriteObject: this->ProjectJson["targets"]) {
-        ScratchSprite Sprite(SpriteObject);
-        this->Sprites.emplace_back(std::move(Sprite));
-    }
     return 0;
 }

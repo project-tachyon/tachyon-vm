@@ -1,56 +1,42 @@
-#ifndef TACHYON_HPP
-#define TACHYON_HPP
+#pragma once
 
-#include <SDL3/SDL_main.h>
-#include <SDL3/SDL_render.h>
-#include <SDL3/SDL_timer.h>
-#include <SDL3/SDL_video.h>
+#include <Scratch/Common.hpp>
+#include <Scratch/Blocks.hpp>
+#include <Compiler.hpp>
+#include <string_view>
 
-class Tachyon {
-    public:
-        int Init(void) {
-            if (TachyonInitialized == true) {
-                return 0;
-            }
-            if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
-                return -1;
-            }
-            this->TachyonWindow = SDL_CreateWindow("Tachyon", 480, 360, 0);
-            if (this->TachyonWindow == nullptr) {
-                SDL_Quit();
-                return -1;
-            }
-            this->TachyonRenderer = SDL_CreateRenderer(this->TachyonWindow, nullptr);
-            if (this->TachyonRenderer == nullptr) {
-                SDL_DestroyWindow(this->TachyonWindow);
-                SDL_Quit();
-                return -1;
-            }
-            TachyonInitialized = true;
-            return 0;
-        }
-        inline int Quit(void) {
-            if (this->TachyonWindow)
-                SDL_DestroyWindow(this->TachyonWindow);
-            if (this->TachyonRenderer)
-                SDL_DestroyRenderer(this->TachyonRenderer);
-            SDL_Quit();
-            return 0;
-        }
+namespace Tachyon {
+    /**
+     * Initializes SDL3.
+     */
+    int Init(void);
 
-        void Render(void) {
-            SDL_RenderClear(this->TachyonRenderer);
-            SDL_SetRenderDrawColor(this->TachyonRenderer, 255, 255, 255, 0);
-            SDL_RenderPresent(this->TachyonRenderer);
-            return;
-        }
-        void Update(void) {
-            return;
-        }
-    private:
-        SDL_Window * TachyonWindow = nullptr;
-        SDL_Renderer * TachyonRenderer = nullptr;
-        bool TachyonInitialized = false;
+    /**
+     * Performs executions.
+     */
+    void __hot Step(Scratch::ScratchProject & Project);
+
+    /**
+     * Renders sprites and anything else.
+     */
+    void __hot Render(void);
+
+    /**
+     * Registers an opcode handler.
+     * @param Opcode string.
+     * @param The function that handles the specific opcode.
+     */
+    void RegisterOpHandler(std::string_view Opcode, Scratch::OpcodeHandler Handler);
+
+    /**
+     * Registers an evaluation (reporter) handler.
+     * @param Opcode string.
+     * @param The function that handles the specific opcode.
+     */
+    void RegisterEvaluationHandler(std::string_view Opcode, Scratch::EvaluationHandler Handler);
+
+    /**
+     * De-initializes SDL3.
+     */
+    void Quit(void);
 };
-
-#endif

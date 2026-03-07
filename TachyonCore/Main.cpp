@@ -15,13 +15,12 @@ int main(int argc, char * argv[]) {
         return -1;
     }
     /* initialize tachyon */
-    Tachyon TachyonVM;
-    if (TachyonVM.Init() < 0) {
+    if (Tachyon::Init() < 0) {
         cout << SDL_GetError() << endl;
         return -1;
     }
     /* verify that the project exists, and parse the project */
-    ScratchProject MainProject = ScratchProject(argv[1]);
+    Scratch::ScratchProject MainProject = Scratch::ScratchProject(argv[1]);
     if (MainProject.IsLoaded() == false) {
         cout << "Failed to open " << argv[1] << endl;
         return -1;
@@ -34,8 +33,6 @@ int main(int argc, char * argv[]) {
     bool shouldExit = false;
     while(shouldExit == false) {
         SDL_Event event;
-        /* update vars */
-        TachyonVM.Update();
         while(SDL_PollEvent(&event) == true) {
             switch (event.type) {
                 case SDL_EVENT_KEY_DOWN:
@@ -53,10 +50,12 @@ int main(int argc, char * argv[]) {
                     break;
             }
         }
+        Tachyon::Step(MainProject);
         /* only render if anything has been rendered */
-        TachyonVM.Render();
+        Tachyon::Render();
+
     }
     /* die tachyon, die */
-    TachyonVM.Quit();
+    Tachyon::Quit();
     return 0;
 }

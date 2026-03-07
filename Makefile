@@ -3,6 +3,7 @@ OUT := tachyon
 
 CPP := clang++
 CPPFLAGS := \
+	-Werror \
 	-Wextra \
 	-Wshadow \
 	-Wpointer-arith \
@@ -13,7 +14,7 @@ CPPFLAGS := \
 	-Wformat-security \
 	-I $(SRC)/Include/ \
 	-O3 \
-	-msse
+	-msse4
 
 LDFLAGS := \
 	-lstdc++ \
