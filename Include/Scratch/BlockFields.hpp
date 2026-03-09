@@ -11,11 +11,6 @@ namespace Scratch {
      * Field object
      */
 
-    /* procedure definition */
-    struct Field_ProcDef {
-        uint8_t ShadowType;
-        std::string StartBlock_Key;
-    };
     /* variable field */
     struct Field_Variable {
         std::string VariableName;
@@ -35,7 +30,7 @@ namespace Scratch {
      * Scratch field descriptor
      */
     struct ScratchField {
-        std::variant<struct Field_ProcDef, struct Field_Variable, struct Field_ProcParam, struct Field_Broadcast> Field;
+        std::variant<struct Field_Variable, struct Field_ProcParam, struct Field_Broadcast> Field;
         enum class FieldType : uint8_t { ProcedureDefinition, VariableField, ListField, ProcedureParam, BroadcastField } Type;
     };
 
@@ -56,9 +51,9 @@ namespace Scratch {
     };
 
     struct ScratchInput {
-        std::variant<ScratchBlock *, struct Input_Value, struct Input_Operand> Input;
+        std::variant<ScratchBlock *, struct Input_Value, struct Input_Operand, std::string> Input;
         std::string ReporterKey;
-        enum class InputType : uint8_t { ValueInput, ConditionInput, SubstackInput } Type;
+        enum class InputType : uint8_t { ValueInput, ConditionInput, SubstackInput, ProcedureDefinition, InvalidInput } Type;
         bool HasReporter;
         uint8_t ShadowType;
     };

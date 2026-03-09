@@ -4,6 +4,12 @@
 #include <Scratch/Blocks.hpp>
 #include <Compiler.hpp>
 #include <string_view>
+#include <cstdint>
+
+#define CONFIG_OPT_WATCHDOG (1 << 0)
+#define CONFIG_OPT_PSUEDO   (1 << 1)
+
+using TachyonConfig = uint16_t;
 
 namespace Tachyon {
     /**
@@ -12,9 +18,17 @@ namespace Tachyon {
     int Init(void);
 
     /**
-     * Performs executions.
+     * Initializes the scheduler.
+     * @param The scratch project to execute.
      */
-    void __hot Step(Scratch::ScratchProject & Project);
+    void InitializeScheduler(Scratch::ScratchProject & Project);
+
+    /**
+     * Performs executions.
+     * @param The scratch project to execute.
+     * @returns Returns true if the VM should exit, false if otherwise. 
+     */
+    bool __hot Step(void);
 
     /**
      * Renders sprites and anything else.

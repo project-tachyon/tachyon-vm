@@ -1,3 +1,4 @@
+#include "Scratch/Procedures.hpp"
 #include <Scratch/Operator.hpp>
 #include <Scratch/Motion.hpp>
 #include <SDL3/SDL_main.h>
@@ -29,8 +30,10 @@ int Tachyon::Init(void) {
         SDL_Quit();
         return -1;
     }
+    SDL_SetRenderVSync(TachyonRenderer, SDL_RENDERER_VSYNC_ADAPTIVE);
     Scratch::Motion::RegisterAll();
     Scratch::Operator::RegisterAll();
+    Scratch::Procedures::RegisterAll();
     TachyonInitialized = true;
     return 0;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "Scratch/Motion.hpp"
+#include <Scratch/Procedures.hpp>
+#include <Scratch/Motion.hpp>
 #include <Scratch/Blocks.hpp>
 #include <Scratch/Data.hpp>
 #include <Lib/SIMDJson.h>
@@ -15,6 +16,21 @@
 using namespace simdjson;
 
 namespace Scratch {
+
+    class ScratchSprite;
+
+    /**
+     * Contains the information of a script.
+     */
+    struct ScratchScript {
+        std::string FirstBlockId;
+        std::string CurrentBlockId;
+        std::string ReturnBlockId;
+        ScratchStatus CurrentStatus;
+        ScratchSprite * Sprite;
+        bool InsideProcedure;
+    };
+
     /**
      * Contains a scratch sprite's information.
      */
@@ -48,8 +64,21 @@ namespace Scratch {
                         return Block.get();
                     }
                 }
+                for(auto & ProcBlock : this->ProcedureDefinitions) {
+                    if (ProcBlock->GetKey() == Id) {
+                        return ProcBlock.get();
+                    }
+                }
                 return nullptr;
             }
+
+            /**
+             * Contains scratch broadcast information.
+             */
+            struct ScratchBroadcast {
+                std::string Name;
+                std::string Key;
+            };
 
             /**
              * ScratchSprite constructor.
@@ -80,7 +109,6 @@ namespace Scratch {
                         );
                     } catch (simdjson_error &Error) {
                         std::cerr << "failed to load variable: " << Error.what() << std::endl;
-                        std::cerr << VariableField.value() << std::endl;
                     }
                 }
                 /* lists */
@@ -94,22 +122,15 @@ namespace Scratch {
                         );
                     } catch (simdjson_error &Error) {
                         std::cerr << "failed to load list: " << Error.what() << std::endl;
-                        std::cerr << ListField.value() << std::endl;
                     }
                 }
                 /* broadcasts */
                 ondemand::object BroadcastData = SpriteData["broadcasts"]->get_object().value();
                 for (ondemand::field BroadcastField : BroadcastData) {
-                    try {
-                        std::string BroadcastKey(BroadcastField.unescaped_key().value());
-                        this->Broadcasts.emplace(
-                            BroadcastKey,
-                            ScratchBroadcast(BroadcastField.value())
-                        );
-                    } catch (simdjson_error &Error) {
-                        std::cerr << "failed to load broadcast: " << Error.what() << std::endl;
-                        std::cerr << BroadcastField.value() << std::endl;
-                    }
+                    std::string BroadcastKey(BroadcastField.unescaped_key().value());
+                    std::string BroadcastName(BroadcastField.value().get_string().value());
+                    ScratchBroadcast Broadcast = { .Name = BroadcastName, .Key = BroadcastKey };
+                    this->Broadcasts.emplace();
                 }
                 /* blocks */
                 ondemand::object BlockData = SpriteData["blocks"]->get_object().value();
@@ -119,27 +140,39 @@ namespace Scratch {
                         std::unique_ptr<ScratchBlock> Block = std::make_unique<ScratchBlock>(BlockKey, BlockField.value(), *this);
                         if (Block->GetOpcode() == "event_whenflagclicked") {
                             GreenFlags.push_back(std::move(Block));
+                        } else if (Block->IsProcedureDef() == true) {
+                            ProcedureDefinitions.push_back(std::move(Block));
                         } else {
                             Blocks.push_back(std::move(Block));
                         }
                     } catch (simdjson_error &Error) {
                         std::cerr << "failed to load block: " << Error.what() << std::endl;
-                        std::cerr << BlockField.value() << std::endl;
                     }
                 }
+                /* all blocks loaded. no missing dependencies to worry about */
+                if (this->ProcedureDefinitions.empty() == false) {
+                    this->ResolveProcedureDefinitions();
+                }
+                this->CreateScripts();
             }
+
             std::unordered_map<std::string, ScratchVariable> Variables;
             std::unordered_map<std::string, ScratchList> Lists;
             std::unordered_map<std::string, ScratchBroadcast> Broadcasts;
             std::vector<std::unique_ptr<ScratchBlock>> Blocks;
             std::vector<std::unique_ptr<ScratchBlock>> GreenFlags;
+            std::vector<std::unique_ptr<ScratchBlock>> ProcedureDefinitions;
+            std::vector<ScratchScript> Scripts;
+            std::vector<ScratchProcedure> Procedures;
             ScratchPosition Position;
         private:
             bool StageSprite;
             std::string Name;
+            void CreateScripts(void);
             void DescendBlocks(ondemand::object BlocksObjects);
+            void ResolveProcedureDefinitions(void);
     };
-    
+
     /**
      * Contains a scratch project's information.
      */
@@ -180,11 +213,13 @@ namespace Scratch {
                 /* false if empty, true if otherwise */
                 return !ProjectZip_Path.empty();
             }
+
             /**
              * Parses the Scratch project into objects and prepares essential data.
              */
             int ParseContents(void);
             std::vector<std::unique_ptr<ScratchSprite>> Sprites;
+
         private:
             std::string ProjectZip_Path;
             zip_t * ProjectZip = nullptr;

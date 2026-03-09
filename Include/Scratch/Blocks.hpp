@@ -28,31 +28,29 @@ namespace Scratch {
     class ScratchSprite;
 
     /**
-     * Contains scratch broadcast information.
-     */
-    class ScratchBroadcast {
-        public:
-            /**
-             * ScratchBroadcast constructor.
-             * @param Broadcast name.
-             */
-            ScratchBroadcast(ondemand::value BroadcastName) {
-                this->Name = BroadcastName.get_string().value();
-            }
-        private:
-            std::string Name;
-    };
-
-    /**
      * Contains status codes returned by opcode handlers.
      */
     enum class ScratchStatus : uint8_t {
         SCRATCH_END,
         SCRATCH_NEXT,
-        SCRATCH_YIELD
+        SCRATCH_YIELD_WAIT,
+        SCRATCH_YIELD_WAIT_UNTIL
     };
 
     class ScratchBlock;
+
+    /**
+     * Contains block mutation information.
+     */
+    struct ScratchMutation {
+        std::vector<std::string> ParametersKeys;
+        std::vector<std::string> ParametersNames;
+        std::vector<ScratchData> ParameterDefaults;
+        std::string ProcCode;
+        bool HasNext;
+        bool UseWarp;
+    };
+    
 
     /**
      * Scratch opcode function handler.
@@ -76,6 +74,7 @@ namespace Scratch {
                 this->Opcode = std::string(BlockData["opcode"]->get_string().value());
                 this->TopLevel = BlockData["topLevel"]->get_bool().value();
                 this->Shadow = BlockData["shadow"]->get_bool().value();
+                this->ProcedureDefinition = (this->Opcode == "procedures_definition");
                 this->BlockKey = Key;
                 if (BlockData["next"].is_null() == false) {
                     this->NextBlock_Key = std::string(BlockData["next"]->get_string().value());
@@ -83,12 +82,17 @@ namespace Scratch {
                 if (BlockData["parent"].is_null() == false) {
                     this->ParentBlock_Key = std::string(BlockData["parent"]->get_string().value());
                 }
+                /* mutation */
+                auto FindResult = BlockData.find_field("mutation");
+                if (FindResult.error() == error_code::SUCCESS) {
+                    Mutation = this->ParseMutation(BlockData["mutation"]);
+                }
                 /* inputs */
                 try {
                     ondemand::object InputData = BlockData["inputs"]->get_object().value();
                     for (ondemand::field InputField : InputData) {
                         std::string InputKey = std::string(InputField.unescaped_key().value());
-                        Inputs.emplace_back(this->DescendInput(InputKey, InputField.value()));
+                        Inputs.emplace_back(this->ParseInput(InputKey, InputField.value()));
                     }
                 } catch (simdjson_error & Error) {
                     std::cerr << Error.what() << std::endl;
@@ -105,7 +109,7 @@ namespace Scratch {
              * Gets the block's opcode.
              * @returns The block's opcode.
              */
-            std::string & GetOpcode(void) {
+            inline std::string & GetOpcode(void) {
                 return this->Opcode;
             }
 
@@ -113,7 +117,7 @@ namespace Scratch {
              * Gets the next block's key.
              * @returns The next block's key.
              */
-            std::string & GetNextKey(void) {
+            inline std::string & GetNextKey(void) {
                 return this->NextBlock_Key;
             }
 
@@ -121,7 +125,7 @@ namespace Scratch {
              * Gets the parent block's key.
              * @returns The parent block's key.
              */
-            std::string & GetParentKey(void) {
+            inline std::string & GetParentKey(void) {
                 return this->ParentBlock_Key;
             }
 
@@ -129,8 +133,24 @@ namespace Scratch {
              * Gets the parent block's key.
              * @returns The parent block's key.
              */
-            std::string & GetKey(void) {
+            inline std::string & GetKey(void) {
                 return this->BlockKey;
+            }
+
+            /**
+             * Checks if the block is a procedure definition.
+             * @returns True if it's a procedure definition, false if otherwise.
+             */
+            inline bool IsProcedureDef(void) {
+                return this->ProcedureDefinition;
+            }
+
+            /**
+             * Checks if the block is an argument reporter.
+             * @returns True if it's an argument reporter, false if otherwise.
+             */
+            inline bool IsArgumentReporter(void) {
+                return this->ArgumentReporter;
             }
             
             /**
@@ -156,12 +176,20 @@ namespace Scratch {
             }
 
             /**
+             * Gets the block's mutation (if it exists).
+             */
+            inline ScratchMutation & __hot GetMutation(void) {
+                return this->Mutation.value();
+            }
+
+            /**
              * Get's the block's sprite.
              * @returns The block's sprite.
              */
             ScratchSprite & __hot GetOwnerSprite(void);
 
-            ScratchData __hot GetInputData(size_t Idx);
+            ScratchData __hot GetInputData(size_t InputNum);
+            ScratchInput __hot GetInput(size_t InputNum);
         private:
             /**
              * Should only be used for non-reporter blocks.
@@ -178,8 +206,9 @@ namespace Scratch {
              */
             void LinkHandlers(void);
 
-            ScratchInput DescendInput(std::string & Key, ondemand::array InputObject);
-            ScratchField DescendField(std::string & Key, ondemand::array FieldObject);
+            ScratchMutation ParseMutation(ondemand::object MutationObject);
+            ScratchInput ParseInput(std::string & Key, ondemand::array InputObject);
+            ScratchField ParseField(std::string & Key, ondemand::array FieldObject);
 
             std::vector<ScratchInput> Inputs;
             std::vector<ScratchField> Fields;
@@ -188,7 +217,10 @@ namespace Scratch {
             std::string ParentBlock_Key;
             std::string BlockKey;
             std::reference_wrapper<ScratchSprite> Sprite;
+            std::optional<ScratchMutation> Mutation;
             bool Shadow;
             bool TopLevel;
+            bool ProcedureDefinition;
+            bool ArgumentReporter;
     };
 };

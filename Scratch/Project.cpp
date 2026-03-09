@@ -6,6 +6,20 @@
 using namespace simdjson;
 using namespace Scratch;
 
+void ScratchSprite::CreateScripts(void) {
+    for(auto & Block : this->GreenFlags) {
+        ScratchScript Script {
+            .FirstBlockId = Block->GetNextKey(),
+            .CurrentBlockId = Block->GetNextKey(),
+            .ReturnBlockId = "",
+            .CurrentStatus = ScratchStatus::SCRATCH_END,
+            .Sprite = this,
+            .InsideProcedure = false,
+        };
+        this->Scripts.push_back(Script);
+    }
+}
+
 int ScratchProject::ParseContents(void) {
     /* get file size */
     struct zip_stat ProjectStat;

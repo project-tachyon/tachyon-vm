@@ -29,6 +29,7 @@ int main(int argc, char * argv[]) {
         cout << "Failed to parse project contents" << endl;
         return -1;
     }
+    Tachyon::InitializeScheduler(MainProject);
     /* prepare for main loop */
     bool shouldExit = false;
     while(shouldExit == false) {
@@ -50,7 +51,7 @@ int main(int argc, char * argv[]) {
                     break;
             }
         }
-        Tachyon::Step(MainProject);
+        shouldExit = Tachyon::Step();
         /* only render if anything has been rendered */
         Tachyon::Render();
 
