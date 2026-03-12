@@ -1,6 +1,7 @@
 #include <Scratch/Common.hpp>
 #include <Scratch/Blocks.hpp>
 #include <Lib/SIMDJson.h>
+#include <stack>
 #include <zip.h>
 
 using namespace simdjson;
@@ -11,9 +12,9 @@ void ScratchSprite::CreateScripts(void) {
         ScratchScript Script {
             .FirstBlockId = Block->GetNextKey(),
             .CurrentBlockId = Block->GetNextKey(),
-            .ReturnBlockId = "",
-            .CurrentStatus = ScratchStatus::SCRATCH_END,
+            .ReturnStack = std::stack<Script_StackFrame>(),
             .Sprite = this,
+            .CurrentStatus = ScratchStatus::SCRATCH_END,
             .InsideProcedure = false,
         };
         this->Scripts.push_back(Script);

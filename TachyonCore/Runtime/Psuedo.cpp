@@ -18,6 +18,7 @@ bool Psuedo::IsPsuedo(std::string ProcCode) {
 
 static inline ScratchStatus __hot Tachyon_LoadU8Buffer(ScratchBlock & Block) {
     /* unimplemented for now */
+    DebugInfo("Loading byte buffer...\n");
     return ScratchStatus::SCRATCH_NEXT;
 }
 

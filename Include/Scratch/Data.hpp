@@ -5,7 +5,6 @@
 #include <Lib/SIMDJson.h>
 #include <charconv>
 #include <cmath>
-#include <iomanip>
 #include <limits>
 #include <string_view>
 #include <string>
@@ -310,15 +309,16 @@ SkipChecks:
 
     class ScratchVariable : ScratchVariable_Base {
         public:
-            ScratchVariable(ondemand::array VariableData, const bool IsPublic) : Data(SanitizeData(VariableData.at(1).value())) {
+            ScratchVariable(ondemand::array VariableData, const bool IsPublic) {
                 /* VariableData[0] = list name, VariableData[1] = actual data */
-                VariableData.reset();
                 this->Name = std::string(VariableData.at(0).get_string().value());
+                VariableData.reset();
+                this->Data = SanitizeData(VariableData.at(1).value());
                 VariableData.reset();
                 this->Public = IsPublic;
             }
 
-            inline void __hot SetData(ScratchData &NewData) {
+            inline void __hot SetData(ScratchData & NewData) {
                 this->Data = NewData;
             }
             inline const ScratchData __hot GetData(void) {
@@ -341,6 +341,7 @@ SkipChecks:
                 this->TotalItems = DataJson.count_elements();
                 if (this->TotalItems >= 200000) {
                     DebugWarn("List \"%s\" goes over 200,000 items; memory usage is bound to increase.\n", this->Name.c_str());
+                    DebugInfo("To reduce memory usage, consider using psuedo-blocks to create a less memory-expensive buffer\n");
                 }
                 /* we dont load it. we lazily load things on-demand */
             }

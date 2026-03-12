@@ -77,22 +77,20 @@ static ScratchStatus __hot Procedures_Call(ScratchBlock & Block) {
         if (Procedure.ProcCode == Mutation.ProcCode) {
             if (Tachyon::GetVM()->Configuration & TACHYON_CFG_PBLOCK) {
                 if (Tachyon::Psuedo::IsPsuedo(Procedure.ProcCode) == true) {
+                    /* act as if nothing ever happened */
                     CurrentScript->CurrentBlockId = Block.GetNextKey();
-                    CurrentScript->InsideProcedure = false;
                     return Tachyon::Psuedo::Execute(Procedure.ProcCode, Block);
                 }
             }
-
             ScratchBlock * ProcBlock = Owner.GetBlockFromId(Procedure.DefinitionKey);
             TachyonAssert(ProcBlock != nullptr);
-            CurrentScript->ReturnBlockId = Block.GetNextKey();
-            CurrentScript->CurrentBlockId = ProcBlock->GetNextKey();
+            CurrentScript->ReturnStack.push({ .ReturnId = Block.GetNextKey(), .InsideProcedure = CurrentScript->InsideProcedure });
             CurrentScript->InsideProcedure = true;
-            break;
+            CurrentScript->CurrentBlockId = Procedure.DefinitionKey;
+            return ScratchStatus::SCRATCH_NEXT;
         }
     }
-    TachyonAssert(CurrentScript->InsideProcedure == false);
-    return ScratchStatus::SCRATCH_NEXT;
+    return ScratchStatus::SCRATCH_END;
 }
 
 void Procedures::RegisterAll(void) {
@@ -114,24 +112,26 @@ void Tachyon::InitializeScheduler(ScratchProject & Project) {
 static inline ScratchStatus ExecuteScript(ScratchScript & Script) {
     while(Script.CurrentBlockId.empty() == false) {
         ScratchBlock * Block = Script.Sprite->GetBlockFromId(Script.CurrentBlockId);
-        if (Block == nullptr) {
-            std::cerr << "WARNING: Invalid block ID: " << Script.CurrentBlockId << std::endl;
+        if (unlikely(Block == nullptr)) {
+            DebugError("WARNING: Invalid block ID: ", Script.CurrentBlockId.c_str());
             return ScratchStatus::SCRATCH_END;
         }
         std::cout << "execute: " << Block->GetOpcode() << std::endl;
         /* execute block */
         ScratchStatus Status = Block->Execute();
-        if (Script.InsideProcedure == true) {
-            if (Script.CurrentBlockId.empty() == true) {
-                Script.InsideProcedure = false;
-                Script.CurrentBlockId = Script.ReturnBlockId;
-            } else {
-                /* update */
-                Block = Script.Sprite->GetBlockFromId(Script.CurrentBlockId);
-            }
-        }
         if (Status != ScratchStatus::SCRATCH_NEXT) {
             return Status;
+        }
+        if (Script.InsideProcedure == true) {
+            if (unlikely(Block->GetNextKey().empty())) {
+                Script_StackFrame CurrentStackFrame = Script.ReturnStack.top();
+                Script.InsideProcedure = CurrentStackFrame.InsideProcedure;
+                Script.CurrentBlockId = CurrentStackFrame.ReturnId;
+                Script.ReturnStack.pop();
+                return ScratchStatus::SCRATCH_NEXT;
+            } else {
+                Block = Script.Sprite->GetBlockFromId(Script.CurrentBlockId);
+            }
         }
         Script.CurrentBlockId = Block->GetNextKey();
         if (unlikely(Script.CurrentBlockId.empty() == true)) {

@@ -11,6 +11,7 @@
 #include <iostream>
 #include <memory>
 #include <unordered_map>
+#include <stack>
 #include <zip.h>
 
 using namespace simdjson;
@@ -19,15 +20,20 @@ namespace Scratch {
 
     class ScratchSprite;
 
+    struct Script_StackFrame {
+        std::string ReturnId;
+        bool InsideProcedure;
+    };
+
     /**
      * Contains the information of a script.
      */
     struct ScratchScript {
         std::string FirstBlockId;
         std::string CurrentBlockId;
-        std::string ReturnBlockId;
-        ScratchStatus CurrentStatus;
+        std::stack<Script_StackFrame> ReturnStack;
         ScratchSprite * Sprite;
+        ScratchStatus CurrentStatus;
         bool InsideProcedure;
     };
 
