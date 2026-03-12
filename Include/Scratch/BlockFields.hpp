@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Scratch/Data.hpp>
+#include <string>
 #include <cstdint>
 #include <variant>
 
@@ -15,10 +16,7 @@ namespace Scratch {
     struct Field_Variable {
         std::string VariableName;
         std::string VariableKey;
-    };
-    /* procedure parameter */
-    struct Field_ProcParam {
-        std::string ParameterName;
+        enum class VariableType : uint8_t { Regular, List } Type;
     };
     /* broadcast field */
     struct Field_Broadcast {
@@ -30,8 +28,8 @@ namespace Scratch {
      * Scratch field descriptor
      */
     struct ScratchField {
-        std::variant<struct Field_Variable, struct Field_ProcParam, struct Field_Broadcast> Field;
-        enum class FieldType : uint8_t { ProcedureDefinition, VariableField, ListField, ProcedureParam, BroadcastField } Type;
+        std::variant<Field_Variable, Field_Broadcast> Field;
+        enum class FieldType : uint8_t { VariableField, ListField, BroadcastField, InvalidField } Type;
     };
 
     /*
@@ -40,7 +38,7 @@ namespace Scratch {
 
     /* value input */
     struct Input_Value {
-        ScratchData Value;
+        std::variant<ScratchData, Field_Broadcast, Field_Variable> Value;
         uint8_t PrimitiveType;
     };
 
@@ -51,10 +49,10 @@ namespace Scratch {
     };
 
     struct ScratchInput {
-        std::variant<ScratchBlock *, struct Input_Value, struct Input_Operand, std::string> Input;
+        std::variant<Input_Value, std::string> Input;
         std::string ReporterKey;
         enum class InputType : uint8_t { ValueInput, ConditionInput, SubstackInput, ProcedureDefinition, InvalidInput } Type;
-        bool HasReporter;
         uint8_t ShadowType;
+        bool HasReporter;
     };
 };

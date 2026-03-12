@@ -12,6 +12,7 @@ namespace Scratch {
         std::string DefinitionKey;
         bool UseWarp;
     };
+
     namespace Procedures {
         void RegisterAll(void);
     }

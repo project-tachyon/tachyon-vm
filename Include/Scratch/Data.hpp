@@ -1,12 +1,13 @@
 #pragma once
 
+#include <Tachyon/Debug.hpp>
 #include <Compiler.hpp>
 #include <Lib/SIMDJson.h>
 #include <charconv>
 #include <cmath>
+#include <iomanip>
 #include <limits>
 #include <string_view>
-#include <system_error>
 #include <string>
 
 using namespace simdjson;
@@ -17,13 +18,130 @@ using namespace simdjson;
 /* scratch uses 53-bit precision so doubles are perfect */
 namespace Scratch {
 
-    typedef struct {
+    /* yes this is bigger and more sophisticated than before so i dont have to deal with manual memory management */
+    /* i hate this the most out of everything in tachyon */
+    typedef struct ScratchData {
         enum class Type : uint8_t { Number, String, Boolean } Type;
         union {
+            std::string String;
             double Number;
-            char const * String;
             bool Boolean;
         };
+        /* constructors */
+        ScratchData() : Type(ScratchData::Type::Number), Number(0) {}
+        ScratchData(const std::string & Value) : Type(ScratchData::Type::String) {
+            new (&this->String) std::string(Value);
+        }
+        ScratchData(double Value) : Type(ScratchData::Type::Number), Number(Value) {}
+        ScratchData(bool Value) : Type(ScratchData::Type::Boolean), Boolean(Value) {}
+        /* copy constructor */
+        ScratchData(const ScratchData & Other) : Type(Other.Type) {
+            switch(this->Type) {
+                case ScratchData::Type::String: {
+                    new (&this->String) std::string(Other.String);
+                    break;
+                }
+                case ScratchData::Type::Number: {
+                    this->Number = Other.Number;
+                    break;
+                }
+                case ScratchData::Type::Boolean: {
+                    this->Boolean = Other.Boolean;
+                    break;
+                }
+            }
+        }
+        /* copy assignment constructor */
+        ScratchData & operator = (const ScratchData & Other) {
+            if (&Other == this) {
+                return *this;
+            }
+            if (this->Type == ScratchData::Type::String) {
+                this->String.~basic_string();
+            }
+            this->Type = Other.Type;
+            switch(this->Type) {
+                case ScratchData::Type::String: {
+                    new (&this->String) std::string(Other.String);
+                    break;
+                }
+                case ScratchData::Type::Number: {
+                    this->Number = Other.Number;
+                    break;
+                }
+                case ScratchData::Type::Boolean: {
+                    this->Boolean = Other.Boolean;
+                    break;
+                }
+            }
+            return *this;
+        }
+        /* move constructor */
+        ScratchData(ScratchData && Other) noexcept : Type(Other.Type) {
+            switch(this->Type) {
+                case ScratchData::Type::String: {
+                    new (&this->String) std::string(std::move(Other.String));
+                    break;
+                }
+                case ScratchData::Type::Number: {
+                    this->Number = Other.Number;
+                    break;
+                }
+                case ScratchData::Type::Boolean: {
+                    this->Boolean = Other.Boolean;
+                    break;
+                }
+            }
+        }
+        /* move assignment constructor */
+        ScratchData & operator = (ScratchData && Other) noexcept {
+            if (&Other == this) {
+                return *this;
+            }
+            if (this->Type == ScratchData::Type::String) {
+                this->String.~basic_string();
+            }
+            this->Type = Other.Type;
+            switch(this->Type) {
+                case ScratchData::Type::String: {
+                    new (&this->String) std::string(std::move(Other.String));
+                    break;
+                }
+                case ScratchData::Type::Number: {
+                    this->Number = Other.Number;
+                    break;
+                }
+                case ScratchData::Type::Boolean: {
+                    this->Boolean = Other.Boolean;
+                    break;
+                }
+            }
+            return *this;
+        }
+
+        friend std::ostream & operator << (std::ostream & Stream, const ScratchData & Self) {
+            switch(Self.Type) {
+                case ScratchData::Type::String: {
+                    Stream << Self.String;
+                    break;
+                }
+                case ScratchData::Type::Number: {
+                    Stream << std::to_string(Self.Number);
+                    break;
+                }
+                case ScratchData::Type::Boolean: {
+                    Stream << (Self.Boolean == true ? "True" : "False");
+                }
+            }
+            return Stream;
+        }
+
+        /* deconstructor */
+        ~ScratchData() {
+            if (this->Type == ScratchData::Type::String) {
+                this->String.~basic_string();
+            }
+        }
     } ScratchData;
    
     typedef struct {
@@ -31,20 +149,18 @@ namespace Scratch {
         ScratchData data;
     } Snum2DataResult;
 
-    static Snum2DataResult __hot StringNum2ScratchData(std::string_view String) {
+    inline Snum2DataResult __hot StringNum2ScratchData(std::string_view String) {
         if (unlikely(String.empty() == true)) {
-            return { std::errc::invalid_argument, ScratchData() };
+            return { std::errc::invalid_argument, ScratchData(double(0)) };
         }
         /* remove whitespace */
         while(String[0] == ' ') String.remove_prefix(1);
         while(String[String.length() - 1] == ' ') String.remove_suffix(1);
 
         if (String == "Infinity" || String == "+Infinity") {
-            ScratchData Data = { .Type = ScratchData::Type::Number, .Number = std::numeric_limits<double>::infinity()};
-            return { std::errc(), Data };
+            return { std::errc(), ScratchData(std::numeric_limits<double>::infinity()) };
         } else if (String == "-Infinity") {
-            ScratchData Data = { .Type = ScratchData::Type::Number, .Number = -std::numeric_limits<double>::infinity()};
-            return { std::errc(), Data };
+            return { std::errc(), ScratchData(-std::numeric_limits<double>::infinity()) };
         }
         uint8_t RadixModifier = 10;
 
@@ -73,33 +189,29 @@ namespace Scratch {
                 String.remove_prefix(2);
                 uint64_t NonDecConversion;
                 std::from_chars_result Result = std::from_chars(String.begin(), String.end(), NonDecConversion, RadixModifier);
-                ScratchData Data;
-                Data.Type = ScratchData::Type::Number;
                 if (Result.ec == std::errc::invalid_argument) {
                     /* bad num */
-                    return { std::errc::invalid_argument, ScratchData() };
+                    return { std::errc::invalid_argument, ScratchData(double(0)) };
                 } else if (Result.ec == std::errc::result_out_of_range) {
                     /* other possible result could be out of range (infinity for scratch) */
-                    Data.Number = std::numeric_limits<double>::infinity();
-                    return { std::errc(), Data };
+                    return { std::errc(), ScratchData(std::numeric_limits<double>::infinity()) };
                 }
-                Data.Number = double(NonDecConversion);
-                return { std::errc(), Data };
+                return { std::errc(), ScratchData(double(NonDecConversion)) };
             }
         }
 SkipChecks:
         if (IS_INVALID_BASE10(String[String.length() - 1]) == true) {
-            return { std::errc::invalid_argument, ScratchData() };
+            return { std::errc::invalid_argument, ScratchData(double(0)) };
         }
         bool PastEuler = false;
         for(size_t i = 0; i < String.length(); i++) {
             const char c = String[i];
             if (IS_VALID_BASE10(c) == false) {
-                return { std::errc::invalid_argument, ScratchData() };
+                return { std::errc::invalid_argument, ScratchData(double(0)) };
             }
             if (PastEuler) {
                 if (c == '.') {
-                    return { std::errc::invalid_argument, ScratchData() };
+                    return { std::errc::invalid_argument, ScratchData(double(0)) };
                 }
             }
             if (c == 'e' || c == 'E') {
@@ -109,27 +221,28 @@ SkipChecks:
         double ConvertedBase10;
         std::from_chars_result Result = std::from_chars(String.begin(), String.end(), ConvertedBase10);
         if (Result.ec == std::errc::invalid_argument) {
-            return { std::errc::invalid_argument, ScratchData() };
+            return { std::errc::invalid_argument, ScratchData(double(0)) };
         } else if (Result.ec == std::errc::result_out_of_range) {
-            ScratchData Data;
-            Data.Type = ScratchData::Type::Number;
-            Data.Number = (String[0] == '-') ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
-            return { std::errc(), Data };
+            return { std::errc(), ScratchData((String[0] == '-') ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity()) };
         }
         /* could be nan or infinity */
         if (unlikely(std::isnan(ConvertedBase10) == true)) {
-            ScratchData Data;
-            Data.Type = ScratchData::Type::String;
-            Data.String = "NaN";
-            return { std::errc(), Data };
+            return { std::errc(), ScratchData("NaN") };
         }
-
-        ScratchData Data;
-        Data.Type = ScratchData::Type::Number;
-        Data.Number = ConvertedBase10;
-        return { std::errc(), Data };
+        return { std::errc(), ScratchData(ConvertedBase10) };
     }
 
+    inline const std::string __hot Data2String(ScratchData & Data) {
+        if (Data.Type == ScratchData::Type::String) {
+            return Data.String;
+        } else if (Data.Type == ScratchData::Type::Number) {
+            /* TODO: set to low precision somehow */
+            return std::to_string(Data.Number);
+        } else {
+            return (Data.Boolean == true ? "true" : "false");
+        }
+        __unreachable;
+    }
 
     inline bool __hot StringIsNumber(std::string_view String) {
         Snum2DataResult Result = StringNum2ScratchData(String);
@@ -139,56 +252,45 @@ SkipChecks:
         return true;
     }
 
-    static inline ScratchData __hot SanitizeData(ondemand::value VariableData) {
-        ScratchData Data;
+    inline ScratchData __hot SanitizeData(ondemand::value VariableData) {
         switch(VariableData.type()) {
             case ondemand::json_type::string: {
-                Data.Type = ScratchData::Type::String;
                 /* not too reliable to detect strings. could be hex, octal, binary, or a number. */
                 std::string SanitizedString(VariableData.get_string().value());
                 if (StringIsNumber(SanitizedString) == true) {
                     Snum2DataResult Result = StringNum2ScratchData(SanitizedString);
                     if (Result.ec == std::errc::invalid_argument) {
                         /* normal string, not a number */
-                        Data.String = SanitizedString.c_str();
-                        return Data;
+                        return ScratchData(SanitizedString);
                     }
+                    /* conversion success */
                     return Result.data;
                 }
-                /* could be hex or binary */
-                Data.String = SanitizedString.c_str();
-                return Data;
+                /* normal string */
+                return ScratchData(SanitizedString);
             }
             case ondemand::json_type::boolean: {
                 bool SanitizedBool = VariableData.get_bool().value();
-                Data.Type = ScratchData::Type::Boolean;
-                Data.Boolean = SanitizedBool;
-                return Data;
+                return ScratchData(SanitizedBool);
             }
             case ondemand::json_type::number: {
                 /* various number types */
-                Data.Type = ScratchData::Type::Number;
                 switch(VariableData.get_number_type()) {
                     case ondemand::number_type::big_integer: {
-                        Data.Number = double(0);
-                        return Data;
+                        return ScratchData(std::numeric_limits<double>::infinity());
                     }
                     case ondemand::number_type::floating_point_number: {
                         double SanitizedDouble = VariableData.get_double().value();
-                        Data.Number = SanitizedDouble;
-                        return Data;
+                        return ScratchData(SanitizedDouble);
                     }
                     default: {
                         double SanitizedNum = VariableData.get_number()->as_double();
-                        Data.Number = SanitizedNum;
-                        return Data;
+                        return ScratchData(SanitizedNum);
                     }
                 }
             }
             default: {
-                Data.Type = ScratchData::Type::Number;
-                Data.Number = 0;
-                return Data;
+                return ScratchData(double(0));
             }
         }
     }
@@ -208,17 +310,19 @@ SkipChecks:
 
     class ScratchVariable : ScratchVariable_Base {
         public:
-            ScratchVariable(ondemand::array VariableData, const bool IsPublic) {
+            ScratchVariable(ondemand::array VariableData, const bool IsPublic) : Data(SanitizeData(VariableData.at(1).value())) {
                 /* VariableData[0] = list name, VariableData[1] = actual data */
+                VariableData.reset();
                 this->Name = std::string(VariableData.at(0).get_string().value());
+                VariableData.reset();
                 this->Public = IsPublic;
-                VariableData.reset();
-                ScratchData Sanitized = SanitizeData(VariableData.at(1).value());
-                this->SetData(Sanitized);
-                VariableData.reset();
             }
+
             inline void __hot SetData(ScratchData &NewData) {
                 this->Data = NewData;
+            }
+            inline const ScratchData __hot GetData(void) {
+                return Data;
             }
         private:
             ScratchData Data;
@@ -233,36 +337,28 @@ SkipChecks:
                 ListData.reset();
                 this->Public = IsPublic;
                 /* prepare for lazy loading */
-                DataJson = ListData.at(1).get_array();
-                ListData.reset();
-                DataJson.reset();
+                DataJson = ListData.at(1).get_array().value();
                 this->TotalItems = DataJson.count_elements();
                 if (this->TotalItems >= 200000) {
-                    std::cout << "WARNING: List \"" << this->Name << "\" goes over 200,000 items; memory usage is bound to increase." << std::endl;
+                    DebugWarn("List \"%s\" goes over 200,000 items; memory usage is bound to increase.\n", this->Name.c_str());
                 }
                 /* we dont load it. we lazily load things on-demand */
             }
-            size_t TotalItems = 0;
-            inline ScratchData __hot Get(size_t index) {
-                if (index > this->TotalItems) {
-                    return { .Type = ScratchData::Type::String, .String = "" };
+
+            inline ScratchData __hot Get(size_t ItemIndex) {
+                if (ItemIndex >= this->TotalItems) {
+                    return ScratchData("");
                 }
-                ScratchData Data;
-                if (Elements.size() < index) {
-                    Data = SanitizeData(DataJson.at(index));
-                    DataJson.reset();
-                    Elements.emplace(Elements.begin() + index, Data);
-                } else {
-                    Data = Elements[index];
-                }
-                return Data;
+                return ScratchData("haha");
             }
+            size_t TotalItems = 0;
         private:
+            padded_string ListJson;
             ondemand::array DataJson;
             std::vector<ScratchData> Elements;
     };
 
-    namespace Variables {
+    namespace Data {
         void RegisterAll(void);
     };
 };

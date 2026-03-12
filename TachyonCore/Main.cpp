@@ -2,7 +2,7 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keycode.h>
 #include <Scratch/Common.hpp>
-#include <Tachyon.hpp>
+#include <Tachyon/Tachyon.hpp>
 #include <iostream>
 
 using namespace std;
@@ -30,32 +30,7 @@ int main(int argc, char * argv[]) {
         return -1;
     }
     Tachyon::InitializeScheduler(MainProject);
-    /* prepare for main loop */
-    bool shouldExit = false;
-    while(shouldExit == false) {
-        SDL_Event event;
-        while(SDL_PollEvent(&event) == true) {
-            switch (event.type) {
-                case SDL_EVENT_KEY_DOWN:
-                    if (event.key.key == SDLK_ESCAPE) {
-                        shouldExit = true;
-                    }
-                    break;
-                case SDL_EVENT_QUIT:
-                    shouldExit = true;
-                    break;
-                case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-                    shouldExit = true;
-                    break;
-                default:
-                    break;
-            }
-        }
-        shouldExit = Tachyon::Step();
-        /* only render if anything has been rendered */
-        Tachyon::Render();
-
-    }
+    Tachyon::MainLoop();
     /* die tachyon, die */
     Tachyon::Quit();
     return 0;

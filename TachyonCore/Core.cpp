@@ -1,15 +1,14 @@
-#include "Scratch/Procedures.hpp"
+#include "Scratch/Looks.hpp"
+#include <Scratch/Data.hpp>
+#include <Scratch/Procedures.hpp>
 #include <Scratch/Operator.hpp>
 #include <Scratch/Motion.hpp>
 #include <SDL3/SDL_main.h>
-#include <SDL3/SDL_render.h>
 #include <SDL3/SDL_timer.h>
-#include <SDL3/SDL_video.h>
 #include <Scratch/Common.hpp>
-#include <Tachyon.hpp>
+#include <Tachyon/Tachyon.hpp>
 
-static SDL_Window * TachyonWindow = nullptr;
-static SDL_Renderer * TachyonRenderer = nullptr;
+static Tachyon::VirtualMachine VM;
 static bool TachyonInitialized = false;
 
 int Tachyon::Init(void) {
@@ -19,36 +18,75 @@ int Tachyon::Init(void) {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
         return -1;
     }
-    TachyonWindow = SDL_CreateWindow("Tachyon", 480, 360, 0);
-    if (TachyonWindow == nullptr) {
+    VM.TachyonWindow = SDL_CreateWindow("Tachyon Virtual Machine", 480, 360, 0);
+    if (VM.TachyonWindow == nullptr) {
         SDL_Quit();
         return -1;
     }
-    TachyonRenderer = SDL_CreateRenderer(TachyonWindow, nullptr);
-    if (TachyonRenderer == nullptr) {
-        SDL_DestroyWindow(TachyonWindow);
+    VM.TachyonRenderer = SDL_CreateRenderer(VM.TachyonWindow, nullptr);
+    if (VM.TachyonRenderer == nullptr) {
+        SDL_DestroyWindow(VM.TachyonWindow);
         SDL_Quit();
         return -1;
     }
-    SDL_SetRenderVSync(TachyonRenderer, SDL_RENDERER_VSYNC_ADAPTIVE);
+    SDL_SetRenderVSync(VM.TachyonRenderer, SDL_RENDERER_VSYNC_ADAPTIVE);
     Scratch::Motion::RegisterAll();
     Scratch::Operator::RegisterAll();
     Scratch::Procedures::RegisterAll();
+    Scratch::Data::RegisterAll();
+    Scratch::Looks::RegisterAll();
+    Tachyon::Psuedo::RegisterAll();
+    /* EXPERIMENTAL FEATURE */
+    VM.Configuration |= TACHYON_CFG_PBLOCK;
     TachyonInitialized = true;
     return 0;
 }
 
+Tachyon::VirtualMachine * Tachyon::GetVM(void) {
+    return &VM;
+}
+
 void __hot Tachyon::Render(void) {
-    SDL_RenderClear(TachyonRenderer);
-    SDL_SetRenderDrawColor(TachyonRenderer, 255, 255, 255, 0);
-    SDL_RenderPresent(TachyonRenderer);
+    SDL_RenderClear(VM.TachyonRenderer);
+    SDL_SetRenderDrawColor(VM.TachyonRenderer, 255, 255, 255, 0);
+    SDL_RenderPresent(VM.TachyonRenderer);
     return;
 }
 
+void __hot Tachyon::MainLoop(void) {
+    while(VM.ShouldExit == false) {
+        SDL_Event event;
+        while(SDL_PollEvent(&event) == true) {
+            switch (event.type) {
+                case SDL_EVENT_KEY_DOWN:
+                    if (event.key.key == SDLK_ESCAPE) {
+                        VM.ShouldExit = true;
+                    }
+                    break;
+                case SDL_EVENT_QUIT:
+                    VM.ShouldExit = true;
+                    break;
+                case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                    VM.ShouldExit = true;
+                    break;
+                default:
+                    break;
+            }
+        }
+        VM.ShouldExit = Tachyon::Step();
+        /* only render if anything has been rendered */
+        Tachyon::Render();
+    }
+}
+
 void Tachyon::Quit(void) {
-    if (TachyonWindow)
-        SDL_DestroyWindow(TachyonWindow);
-    if (TachyonRenderer)
-        SDL_DestroyRenderer(TachyonRenderer);
+    if (VM.TachyonWindow)
+        SDL_DestroyWindow(VM.TachyonWindow);
+    if (VM.TachyonRenderer)
+        SDL_DestroyRenderer(VM.TachyonRenderer);
     SDL_Quit();
+}
+
+void Tachyon::Exit() {
+
 }

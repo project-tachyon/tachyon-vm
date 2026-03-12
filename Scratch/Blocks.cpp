@@ -1,3 +1,5 @@
+#include <Tachyon/Debug.hpp>
+#include <Tachyon/Tachyon.hpp>
 #include <Scratch/Data.hpp>
 #include <Scratch/BlockFields.hpp>
 #include <Scratch/Blocks.hpp>
@@ -6,29 +8,51 @@
 #include <Compiler.hpp>
 #include <iostream>
 #include <cstdint>
+#include <variant>
 
 using namespace simdjson;
 using namespace Scratch;
 
 ScratchData __hot ScratchBlock::GetInputData(size_t InputNum) {
     if ((InputNum > this->Inputs.size()) || this->Inputs.empty() ) {
-        return { .Type = ScratchData::Type::Number, .Number = 0 };
+        return ScratchData(double(0));
     }
     ScratchInput & Input = this->Inputs[InputNum];
     if (Input.HasReporter == true) {
         ScratchSprite & OwnerSprite = this->Sprite.get();
         ScratchBlock * ReporterBlock = OwnerSprite.GetBlockFromId(Input.ReporterKey);
-        if (ReporterBlock == nullptr) {
-            std::cerr << "Invalid reporter block" << std::endl;
-            return { .Type = ScratchData::Type::Number, .Number = 0 };
-        }
+        TachyonAssert(ReporterBlock != nullptr);
         ScratchData ReporterResult = ReporterBlock->Evaluate();
         return ReporterResult;
     }
     if (Input.Type == ScratchInput::InputType::ValueInput) {
-        return std::get<struct Input_Value>(Input.Input).Value;
+        Input_Value InputValue = std::get<Input_Value>(Input.Input);
+        ScratchSprite & OwnerSprite = this->GetOwnerSprite();
+        ScratchData Data;
+        if (std::holds_alternative<Field_Variable>(InputValue.Value)) {
+            Field_Variable VariableField = std::get<Field_Variable>(InputValue.Value);
+            if (VariableField.Type == Field_Variable::VariableType::Regular) {
+                auto InputVariable = OwnerSprite.Variables.find(VariableField.VariableKey);
+
+                TachyonAssert(InputVariable != OwnerSprite.Variables.end());
+
+                Data = InputVariable->second.GetData();
+            } else {
+                auto InputList = OwnerSprite.Lists.find(VariableField.VariableKey);
+
+                TachyonAssert(InputList != OwnerSprite.Lists.end());
+
+                /* UNIMPLEMENTED */
+                Data = ScratchData(double(0));
+                DebugError("Unimplemented #1\n");
+            }
+
+        } else if (std::holds_alternative<ScratchData>(InputValue.Value)) {
+            Data = std::get<ScratchData>(InputValue.Value);
+        }
+        return Data;
     }
-    return { .Type = ScratchData::Type::Number, .Number = 0 };
+    return ScratchData(double(0));
 }
 
 ScratchInput __hot ScratchBlock::GetInput(size_t InputNum) {
@@ -40,6 +64,15 @@ ScratchInput __hot ScratchBlock::GetInput(size_t InputNum) {
     return this->Inputs[InputNum];
 }
 
+ScratchField __hot ScratchBlock::GetField(size_t FieldNum) {
+    if ((FieldNum > this->Fields.size()) || this->Fields.empty() ) {
+        struct ScratchField Field;
+        Field.Type = ScratchField::FieldType::InvalidField;
+        return Field;
+    }
+    return this->Fields[FieldNum];
+}
+
 ScratchSprite & __hot ScratchBlock::GetOwnerSprite(void) {
     return this->Sprite.get();
 }
@@ -49,8 +82,43 @@ static struct Input_Value SetupInputValue(ondemand::array & RawArray) {
     RawArray.reset();
     Value.PrimitiveType = uint8_t(RawArray.at(0).get_uint64() & 0xFF);
     RawArray.reset();
-    Value.Value = SanitizeData(RawArray.at(1));
-    RawArray.reset();
+    switch(Value.PrimitiveType) {
+        case INPUT_PRIMITIVE_BROADCAST: {
+            Field_Broadcast Broadcast;
+            Broadcast.BroadcastName = std::string(RawArray.at(1)->get_string().value());
+            RawArray.reset();
+            Broadcast.BroadcastKey = std::string(RawArray.at(2)->get_string().value());
+            RawArray.reset();
+            Value.Value = Broadcast;
+            break;
+        }
+        /* yes i know the code is repetitive but it works for now */
+        case INPUT_PRIMITIVE_VAR: {
+            Field_Variable Variable;
+            Variable.VariableName = std::string(RawArray.at(1)->get_string().value());
+            RawArray.reset();
+            Variable.VariableKey = std::string(RawArray.at(2)->get_string().value());
+            RawArray.reset();
+            Variable.Type = Field_Variable::VariableType::Regular;
+            Value.Value = Variable;
+            break;
+        }
+        case INPUT_PRIMITIVE_LIST: {
+            Field_Variable Variable;
+            Variable.VariableName = std::string(RawArray.at(1)->get_string().value());
+            RawArray.reset();
+            Variable.VariableKey = std::string(RawArray.at(2)->get_string().value());
+            RawArray.reset();
+            Variable.Type = Field_Variable::VariableType::List;
+            Value.Value = Variable;
+            break;
+        }
+        default: {
+            Value.Value = SanitizeData(RawArray.at(1));
+            RawArray.reset();
+            break;
+        }
+    }
     return Value;
 }
 
@@ -93,11 +161,8 @@ ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputOb
     Input.ShadowType = uint8_t(InputObject.at(0)->get_uint64() & 0xFF);
     InputObject.reset();
     Input.Type = ScratchInput::InputType::InvalidInput;
-    if (Key == "VALUE" || Key == "INDEX" || Key == "TIMES" 
-     || Key == "ITEM" || Key == "OPERAND" || Key == "OPERAND1"
-     || Key == "OPERAND2" || Key == "X" || Key == "Y"
-     || Key == "DX" || Key == "DY" || Key == "MESSAGE"
-     || Key == "NUM1" || Key == "NUM2" || Key == "NUM") {
+    if (Key == "VALUE" || Key == "MESSAGE" || Key == "STRING1"
+        || Key == "STRING1" || Key == "STRING2") {
         Input.Type = ScratchInput::InputType::ValueInput;
         /* setup value input */
         struct Input_Value Value;
@@ -109,24 +174,34 @@ ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputOb
                 Input.Input = SetupInputValue(ValueArray);
                 InputObject.reset();
                 Input.HasReporter = false;
-                Input.ReporterKey = std::string();
                 break;
             }
             case INPUT_NO_SHADOW: {
                 return Input;
             }
             case INPUT_REPORTER_BLOCK: {
-                std::string ReporterKeyString(InputObject.at(1)->get_string().value());
-                InputObject.reset();
-
-                ondemand::array ValueArray = InputObject.at(2).get_array().value();
-                InputObject.reset();
-
-                /* always has a reporter */
-                Input.Input = SetupInputValue(ValueArray);
-                InputObject.reset();
-                Input.HasReporter = true;
-                Input.ReporterKey = ReporterKeyString;
+                ondemand::array ValueArray;
+                if (InputObject.at(1).is_string() == true) {
+                    /* the typical block chain */
+                    InputObject.reset();
+                    std::string ReporterKeyString(InputObject.at(1)->get_string().value());
+                    InputObject.reset();
+                    ValueArray = InputObject.at(2).get_array().value();
+                    InputObject.reset();
+                    Input.ReporterKey = ReporterKeyString;
+                    /* always has a reporter */
+                    Input.Input = SetupInputValue(ValueArray);
+                    InputObject.reset();
+                    Input.HasReporter = true;
+                } else {
+                    /* variable, list, or broadcast */
+                    InputObject.reset();
+                    ValueArray = InputObject.at(1)->get_array().value();
+                    InputObject.reset();
+                    Input.Input = SetupInputValue(ValueArray);
+                    InputObject.reset();
+                    Input.HasReporter = false;
+                }
                 break;
             }
             default: {
@@ -145,7 +220,7 @@ ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputOb
             Input.HasReporter = false;
             Input.Input = std::string(InputObject.at(1)->get_string().value());
         } else {
-            std::cerr << "WARNING: Unknown/unhandled input key: " << Key << ". Input will be returned as empty" << std::endl;
+            DebugWarn("Unknown/unhandled input key \"%s\". Input will be returned as empty.\n", Key.c_str());
         }
     }
     return Input;
@@ -154,5 +229,20 @@ ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputOb
 
 ScratchField ScratchBlock::ParseField(std::string & Key, ondemand::array FieldObject) {
     ScratchField Field;
+    Field.Type = ScratchField::FieldType::InvalidField;
+    if (Key == "LIST" || Key == "VARIABLE") {
+        std::string VariableName(FieldObject.at(0)->get_string().value());
+        FieldObject.reset();
+        std::string VariableKey(FieldObject.at(1).get_string().value());
+        FieldObject.reset();
+
+        ScratchSprite & Owner = this->GetOwnerSprite();
+        Field_Variable VariableField;
+
+        Field.Type = (Key == "LIST") ? ScratchField::FieldType::ListField : ScratchField::FieldType::VariableField;
+        VariableField.VariableKey = VariableKey;
+        VariableField.VariableName = VariableName;
+        Field.Field = VariableField;
+    }
     return Field;
 }

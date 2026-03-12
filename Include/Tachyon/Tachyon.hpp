@@ -1,17 +1,37 @@
 #pragma once
 
+#include <Scratch/Procedures.hpp>
 #include <Scratch/Common.hpp>
 #include <Scratch/Blocks.hpp>
 #include <Compiler.hpp>
 #include <string_view>
 #include <cstdint>
 
-#define CONFIG_OPT_WATCHDOG (1 << 0)
-#define CONFIG_OPT_PSUEDO   (1 << 1)
+#include <SDL3/SDL_render.h>
+
+/**
+ * Configuration option: Script watchdog.
+ * Enables a watchdog for all scripts.
+ */
+#define TACHYON_CFG_WATCHDOG  (1 << 0)
+
+/**
+ * Configuration option: Psuedo-block support.
+ * When enabled, procedures with a certain names are not treated as normal procedures. They instead execute native machine code, which can significantly boosts performance for emulators.
+ */
+#define TACHYON_CFG_PBLOCK       (1 << 1)
 
 using TachyonConfig = uint16_t;
 
 namespace Tachyon {
+    
+    struct VirtualMachine {
+        TachyonConfig Configuration;
+        SDL_Window * TachyonWindow = nullptr;
+        SDL_Renderer * TachyonRenderer = nullptr;
+        bool ShouldExit = false;
+    };
+
     /**
      * Initializes SDL3.
      */
@@ -22,6 +42,17 @@ namespace Tachyon {
      * @param The scratch project to execute.
      */
     void InitializeScheduler(Scratch::ScratchProject & Project);
+
+    /**
+     * Gets the VM information.
+     * @returns VM information.
+     */
+    VirtualMachine * GetVM(void);
+
+    /**
+     * Starts the main VM loop.
+     */
+    void __hot MainLoop(void);
 
     /**
      * Performs executions.
@@ -53,4 +84,15 @@ namespace Tachyon {
      * De-initializes SDL3.
      */
     void Quit(void);
+
+    /**
+     * Causes Tachyon to exit.
+     */
+    void Exit(void);
+
+    namespace Psuedo {
+        bool IsPsuedo(std::string ProcCode);
+        Scratch::ScratchStatus Execute(std::string ProcCode, Scratch::ScratchBlock & Block);
+        void RegisterAll(void);
+    };
 };

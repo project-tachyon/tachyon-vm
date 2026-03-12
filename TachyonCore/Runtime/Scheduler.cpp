@@ -1,8 +1,9 @@
+#include "Tachyon/Debug.hpp"
 #include <Scratch/BlockFields.hpp>
 #include <Scratch/Procedures.hpp>
 #include <Scratch/Blocks.hpp>
 #include <Scratch/Common.hpp>
-#include <Tachyon.hpp>
+#include <Tachyon/Tachyon.hpp>
 #include <string_view>
 #include <vector>
 
@@ -38,18 +39,12 @@ void ScratchBlock::LinkHandlers(void) {
 }
 
 void Tachyon::RegisterOpHandler(std::string_view Opcode, OpcodeHandler Handler) {
-    if (OpcodeHandlers.find(Opcode) != OpcodeHandlers.end()) {
-        std::cerr << "WARNING: Conflicting opcode handlers for " << Opcode << std::endl;
-        return;
-    }
+    TachyonAssert(OpcodeHandlers.find(Opcode) == OpcodeHandlers.end());
     OpcodeHandlers.emplace(Opcode, Handler);
 }
 
 void Tachyon::RegisterEvaluationHandler(std::string_view Opcode, EvaluationHandler Handler) {
-    if (ReporterHandlers.find(Opcode) != ReporterHandlers.end()) {
-        std::cerr << "WARNING: Conflicting reporter handlers for " << Opcode << std::endl;
-        return;
-    }
+    TachyonAssert(ReporterHandlers.find(Opcode) == ReporterHandlers.end());
     ReporterHandlers.emplace(Opcode, Handler);
 }
 
@@ -80,16 +75,23 @@ static ScratchStatus __hot Procedures_Call(ScratchBlock & Block) {
     ScratchSprite & Owner = Block.GetOwnerSprite();
     for (auto & Procedure : Owner.Procedures) {
         if (Procedure.ProcCode == Mutation.ProcCode) {
-            ScratchBlock * ProcBlock = Owner.GetBlockFromId(Procedure.DefinitionKey);
-            if (ProcBlock == nullptr) {
-                std::cerr << "WARNING: Invalid procedure!! Tried getting definition block \"" << Procedure.DefinitionKey << "\" but got NULL instead :(" << std::endl;
-                return ScratchStatus::SCRATCH_END;
+            if (Tachyon::GetVM()->Configuration & TACHYON_CFG_PBLOCK) {
+                if (Tachyon::Psuedo::IsPsuedo(Procedure.ProcCode) == true) {
+                    CurrentScript->CurrentBlockId = Block.GetNextKey();
+                    CurrentScript->InsideProcedure = false;
+                    return Tachyon::Psuedo::Execute(Procedure.ProcCode, Block);
+                }
             }
+
+            ScratchBlock * ProcBlock = Owner.GetBlockFromId(Procedure.DefinitionKey);
+            TachyonAssert(ProcBlock != nullptr);
             CurrentScript->ReturnBlockId = Block.GetNextKey();
             CurrentScript->CurrentBlockId = ProcBlock->GetNextKey();
             CurrentScript->InsideProcedure = true;
+            break;
         }
     }
+    TachyonAssert(CurrentScript->InsideProcedure == false);
     return ScratchStatus::SCRATCH_NEXT;
 }
 
@@ -100,7 +102,7 @@ void Procedures::RegisterAll(void) {
 /* scheduler stuff */
 
 void Tachyon::InitializeScheduler(ScratchProject & Project) {
-    /* all scripts are ready */
+    /* all scripts are BORN ready */
     for(auto & Sprite : Project.Sprites) {
         for(auto & Script : Sprite->Scripts) {
             SchedulerRunQueue.emplace_back(Script);

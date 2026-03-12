@@ -92,7 +92,17 @@ namespace Scratch {
                     ondemand::object InputData = BlockData["inputs"]->get_object().value();
                     for (ondemand::field InputField : InputData) {
                         std::string InputKey = std::string(InputField.unescaped_key().value());
-                        Inputs.emplace_back(this->ParseInput(InputKey, InputField.value()));
+                        this->Inputs.emplace_back(this->ParseInput(InputKey, InputField.value()));
+                    }
+                } catch (simdjson_error & Error) {
+                    std::cerr << Error.what() << std::endl;
+                }
+                /* fields */
+                try {
+                    ondemand::object FieldData = BlockData["fields"]->get_object().value();
+                    for (ondemand::field FieldField : FieldData) {
+                        std::string FieldKey = std::string(FieldField.unescaped_key().value());
+                        this->Fields.emplace_back(this->ParseField(FieldKey, FieldField.value()));
                     }
                 } catch (simdjson_error & Error) {
                     std::cerr << Error.what() << std::endl;
@@ -170,7 +180,7 @@ namespace Scratch {
             inline ScratchData __hot Evaluate(void) {
                 if (unlikely(this->ReporterHandler == nullptr)) {
                     std::cerr << "WARNING: No reporter handler registered for " << this->Opcode << std::endl;
-                    return { .Type = ScratchData::Type::Number, .Number = 0 };
+                    return ScratchData(double(0));
                 }
                 return this->ReporterHandler(*this);
             }
@@ -190,6 +200,7 @@ namespace Scratch {
 
             ScratchData __hot GetInputData(size_t InputNum);
             ScratchInput __hot GetInput(size_t InputNum);
+            ScratchField __hot GetField(size_t FieldNum);
         private:
             /**
              * Should only be used for non-reporter blocks.

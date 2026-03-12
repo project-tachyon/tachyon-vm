@@ -2,11 +2,11 @@
 #include <Scratch/BlockFields.hpp>
 #include <Scratch/Blocks.hpp>
 #include <Scratch/Motion.hpp>
-#include <Tachyon.hpp>
+#include <Tachyon/Tachyon.hpp>
 
 using namespace Scratch;
 
-static ScratchStatus Motion_GoToXY(ScratchBlock & Block) {
+static inline ScratchStatus Motion_GoToXY(ScratchBlock & Block) {
     ScratchData X_Data = Block.GetInputData(0);
     ScratchData Y_Data = Block.GetInputData(1);
 
