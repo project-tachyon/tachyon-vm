@@ -1,8 +1,9 @@
-#include "Scratch/Looks.hpp"
+#include <Scratch/Looks.hpp>
 #include <Scratch/Data.hpp>
 #include <Scratch/Procedures.hpp>
 #include <Scratch/Operator.hpp>
 #include <Scratch/Motion.hpp>
+#include <Scratch/ControlFlow.hpp>
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_timer.h>
 #include <Scratch/Common.hpp>
@@ -35,6 +36,7 @@ int Tachyon::Init(void) {
     Scratch::Procedures::RegisterAll();
     Scratch::Data::RegisterAll();
     Scratch::Looks::RegisterAll();
+    Scratch::ControlFlow::RegisterAll();
     Tachyon::Psuedo::RegisterAll();
     /* EXPERIMENTAL FEATURE */
     VM.Configuration |= TACHYON_CFG_PBLOCK;

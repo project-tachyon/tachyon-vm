@@ -1,9 +1,9 @@
-#include "Tachyon/Debug.hpp"
 #include <Scratch/BlockFields.hpp>
 #include <Scratch/Procedures.hpp>
 #include <Scratch/Blocks.hpp>
 #include <Scratch/Common.hpp>
 #include <Tachyon/Tachyon.hpp>
+#include <Tachyon/Debug.hpp>
 #include <string_view>
 #include <vector>
 
@@ -15,7 +15,8 @@ using namespace Scratch;
 static std::vector<ScratchScript> SchedulerRunQueue;
 static std::vector<ScratchScript> SchedulerYieldQueue;
 
-static ScratchScript * CurrentScript;
+static ScratchScript * CurrentScript = nullptr;
+static ScratchSprite * Stage = nullptr;
 
 /**
  * Map containing all opcode handlers.
@@ -48,56 +49,17 @@ void Tachyon::RegisterEvaluationHandler(std::string_view Opcode, EvaluationHandl
     ReporterHandlers.emplace(Opcode, Handler);
 }
 
-void ScratchSprite::ResolveProcedureDefinitions(void) {
-    std::cout << "resolving procedure definitions for " << this->Name << std::endl;
-    for(auto & ProcDef : this->ProcedureDefinitions) {
-        ScratchInput Input = ProcDef->GetInput(0);
-        if (Input.Type == ScratchInput::InputType::InvalidInput || Input.Type != ScratchInput::InputType::ProcedureDefinition) {
-            std::cerr << "Invalid procedure definition" << std::endl;
-            continue;
-        }
-        struct ScratchProcedure Procedure;
-        Procedure.DefinitionKey = ProcDef->GetKey();
-        Procedure.PrototypeKey = std::get<std::string>(Input.Input);
-        ScratchBlock * Prototype = this->GetBlockFromId(Procedure.PrototypeKey);
-        /* we read from the prototype mutation from here */
-        ScratchMutation Mutation = Prototype->GetMutation();
-        Procedure.UseWarp = Mutation.UseWarp;
-        Procedure.ProcCode = Mutation.ProcCode;
-        Procedure.ParametersNames = Mutation.ParametersNames;
-        Procedure.ParametersKeys = Mutation.ParametersKeys;
-        this->Procedures.emplace_back(Procedure);
-    }
-}
+/* tachyon stuff */
 
-static ScratchStatus __hot Procedures_Call(ScratchBlock & Block) {
-    ScratchMutation & Mutation = Block.GetMutation();
-    ScratchSprite & Owner = Block.GetOwnerSprite();
-    for (auto & Procedure : Owner.Procedures) {
-        if (Procedure.ProcCode == Mutation.ProcCode) {
-            if (Tachyon::GetVM()->Configuration & TACHYON_CFG_PBLOCK) {
-                if (Tachyon::Psuedo::IsPsuedo(Procedure.ProcCode) == true) {
-                    /* act as if nothing ever happened */
-                    CurrentScript->CurrentBlockId = Block.GetNextKey();
-                    return Tachyon::Psuedo::Execute(Procedure.ProcCode, Block);
-                }
-            }
-            ScratchBlock * ProcBlock = Owner.GetBlockFromId(Procedure.DefinitionKey);
-            TachyonAssert(ProcBlock != nullptr);
-            CurrentScript->ReturnStack.push({ .ReturnId = Block.GetNextKey(), .InsideProcedure = CurrentScript->InsideProcedure });
-            CurrentScript->InsideProcedure = true;
-            CurrentScript->CurrentBlockId = Procedure.DefinitionKey;
-            return ScratchStatus::SCRATCH_NEXT;
-        }
-    }
-    return ScratchStatus::SCRATCH_END;
-}
-
-void Procedures::RegisterAll(void) {
-    Tachyon::RegisterOpHandler("procedures_call", Procedures_Call);
+ScratchSprite * Tachyon::GetStage(void) {
+    return Stage;
 }
 
 /* scheduler stuff */
+
+ScratchScript * Tachyon::GetCurrentScript(void) {
+    return CurrentScript;
+}
 
 void Tachyon::InitializeScheduler(ScratchProject & Project) {
     /* all scripts are BORN ready */
@@ -105,8 +67,14 @@ void Tachyon::InitializeScheduler(ScratchProject & Project) {
         for(auto & Script : Sprite->Scripts) {
             SchedulerRunQueue.emplace_back(Script);
         }
+        if (unlikely(Sprite->IsStage() == true)) {
+            Stage = Sprite.get();
+        }
     }
     SchedulerYieldQueue.resize(SchedulerRunQueue.size());
+    if ((Tachyon::GetVM()->Configuration & TACHYON_CFG_PBLOCK) == false) {
+        DebugWarn("Psuedo-blocks are disabled. This likely isn't a problem for projects that don't support Tachyon, but for those that do, you may notice a drop in performance and memory efficiency.\n");
+    }
 }
 
 static inline ScratchStatus ExecuteScript(ScratchScript & Script) {
@@ -116,7 +84,6 @@ static inline ScratchStatus ExecuteScript(ScratchScript & Script) {
             DebugError("WARNING: Invalid block ID: ", Script.CurrentBlockId.c_str());
             return ScratchStatus::SCRATCH_END;
         }
-        std::cout << "execute: " << Block->GetOpcode() << std::endl;
         /* execute block */
         ScratchStatus Status = Block->Execute();
         if (Status != ScratchStatus::SCRATCH_NEXT) {
@@ -124,18 +91,34 @@ static inline ScratchStatus ExecuteScript(ScratchScript & Script) {
         }
         if (Script.InsideProcedure == true) {
             if (unlikely(Block->GetNextKey().empty())) {
-                Script_StackFrame CurrentStackFrame = Script.ReturnStack.top();
+                Script_StackFrame CurrentStackFrame = Script.ReturnStack.back();
                 Script.InsideProcedure = CurrentStackFrame.InsideProcedure;
                 Script.CurrentBlockId = CurrentStackFrame.ReturnId;
-                Script.ReturnStack.pop();
-                return ScratchStatus::SCRATCH_NEXT;
+                Script.ReturnStack.pop_back();
+                continue;
             } else {
                 Block = Script.Sprite->GetBlockFromId(Script.CurrentBlockId);
             }
         }
-        Script.CurrentBlockId = Block->GetNextKey();
-        if (unlikely(Script.CurrentBlockId.empty() == true)) {
-            return ScratchStatus::SCRATCH_END;
+        if (Script.ShouldStay == false) {
+            Script.CurrentBlockId = Block->GetNextKey();
+            if (unlikely(Script.CurrentBlockId.empty() == true)) {
+                Script_StackFrame & CurrentStackFrame = Script.ReturnStack.back();
+                if (CurrentStackFrame.RepeatsLeft < 0) {
+                    return ScratchStatus::SCRATCH_END;
+                }
+                CurrentStackFrame.RepeatsLeft--;
+                if (likely(CurrentStackFrame.RepeatsLeft < 0)) {
+                    Script.CurrentBlockId = CurrentStackFrame.ReturnId;
+                    Script.InsideProcedure = CurrentStackFrame.InsideProcedure;
+                    Script.ReturnStack.pop_back();
+                    continue;
+                }
+                Script.CurrentBlockId = CurrentStackFrame.RepeatId;
+            }
+        } else {
+            /* reset */
+            Script.ShouldStay = false;
         }
     }
     return ScratchStatus::SCRATCH_END;

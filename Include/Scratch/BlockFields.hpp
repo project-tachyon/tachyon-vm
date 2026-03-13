@@ -28,8 +28,8 @@ namespace Scratch {
      * Scratch field descriptor
      */
     struct ScratchField {
-        std::variant<Field_Variable, Field_Broadcast> Field;
-        enum class FieldType : uint8_t { VariableField, ListField, BroadcastField, InvalidField } Type;
+        std::variant<Field_Variable, Field_Broadcast, std::string> Field;
+        enum class FieldType : uint8_t { InvalidField, VariableField, ListField, BroadcastField, StopOption } Type;
     };
 
     /*

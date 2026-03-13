@@ -32,15 +32,15 @@ ScratchData __hot ScratchBlock::GetInputData(size_t InputNum) {
         if (std::holds_alternative<Field_Variable>(InputValue.Value)) {
             Field_Variable VariableField = std::get<Field_Variable>(InputValue.Value);
             if (VariableField.Type == Field_Variable::VariableType::Regular) {
-                auto InputVariable = OwnerSprite.Variables.find(VariableField.VariableKey);
+                ScratchVariable * Variable = OwnerSprite.GetVariable(VariableField.VariableKey);
 
-                TachyonAssert(InputVariable != OwnerSprite.Variables.end());
+                TachyonAssert(Variable != nullptr);
 
-                Data = InputVariable->second.GetData();
+                Data = Variable->GetData();
             } else {
-                auto InputList = OwnerSprite.Lists.find(VariableField.VariableKey);
+                ScratchList * List = OwnerSprite.GetList(VariableField.VariableKey);
 
-                TachyonAssert(InputList != OwnerSprite.Lists.end());
+                TachyonAssert(List != nullptr);
 
                 /* UNIMPLEMENTED */
                 Data = ScratchData(double(0));
@@ -162,7 +162,9 @@ ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputOb
     InputObject.reset();
     Input.Type = ScratchInput::InputType::InvalidInput;
     if (Key == "VALUE" || Key == "MESSAGE" || Key == "STRING1"
-        || Key == "STRING1" || Key == "STRING2") {
+        || Key == "STRING1" || Key == "STRING2" || Key == "OPERAND1"
+        || Key == "OPERAND2" || Key == "ITEM" || Key == "INDEX"
+        || Key == "TIMES" || Key == "NUM1" || Key == "NUM2") {
         Input.Type = ScratchInput::InputType::ValueInput;
         /* setup value input */
         struct Input_Value Value;
@@ -211,9 +213,11 @@ ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputOb
         }
     } else if (Key == "CONDITION") {
         Input.Type = ScratchInput::InputType::ConditionInput;
+        Input.Input = std::string(InputObject.at(1)->get_string().value());
         /* setup conditional input, ignore shadow type */
     } else if (Key == "SUBSTACK" || Key == "SUBSTACK2") {
         Input.Type = ScratchInput::InputType::SubstackInput;
+        Input.Input = std::string(InputObject.at(1)->get_string().value());
     } else {
         if (this->IsProcedureDef() == true) {
             Input.Type = ScratchInput::InputType::ProcedureDefinition;
@@ -243,6 +247,12 @@ ScratchField ScratchBlock::ParseField(std::string & Key, ondemand::array FieldOb
         VariableField.VariableKey = VariableKey;
         VariableField.VariableName = VariableName;
         Field.Field = VariableField;
+    } else if (Key == "STOP_OPTION") {
+        std::string StopOption(FieldObject.at(0)->get_string().value());
+        FieldObject.reset();
+
+        Field.Type = ScratchField::FieldType::StopOption;
+        Field.Field = StopOption;
     }
     return Field;
 }

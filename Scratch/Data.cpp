@@ -12,13 +12,9 @@ static inline ScratchStatus __hot Data_DeleteAllOfList(ScratchBlock & Block) {
 
     Field_Variable FieldVar = std::get<Field_Variable>(Field.Field);
     ScratchSprite & Owner = Block.GetOwnerSprite();
-    auto Item = Owner.Lists.find(FieldVar.VariableKey);
-
-    TachyonAssert(Item != Owner.Lists.end());
-
-    ScratchList & List = Item->second;
+    ScratchList * List = Owner.GetList(FieldVar.VariableKey);
+    TachyonAssert(List != nullptr);
     //List->DiscardData();
-
     return ScratchStatus::SCRATCH_NEXT;
 }
 
@@ -29,13 +25,10 @@ static inline ScratchStatus __hot Data_SetVariable(ScratchBlock & Block) {
 
     Field_Variable FieldVar = std::get<Field_Variable>(Field.Field);
     ScratchSprite & Owner = Block.GetOwnerSprite();
-    auto Item = Owner.Variables.find(FieldVar.VariableKey);
-
-    TachyonAssert(Item != Owner.Variables.end());
-
-    ScratchVariable & Variable = Item->second;
+    ScratchVariable * Variable = Owner.GetVariable(FieldVar.VariableKey);
+    TachyonAssert(Variable != nullptr);
     ScratchData Data = Block.GetInputData(0);
-    Variable.SetData(Data);
+    Variable->SetData(Data);
     return ScratchStatus::SCRATCH_NEXT;
 }
 

@@ -30,6 +30,7 @@ namespace Tachyon {
         SDL_Window * TachyonWindow = nullptr;
         SDL_Renderer * TachyonRenderer = nullptr;
         bool ShouldExit = false;
+        bool RendererUpdate = false;
     };
 
     /**
@@ -48,6 +49,19 @@ namespace Tachyon {
      * @returns VM information.
      */
     VirtualMachine * GetVM(void);
+
+    /**
+     * Gets the currently running script.
+     * @returns The script that is currently running.
+     */
+    Scratch::ScratchScript * GetCurrentScript(void);
+
+    /**
+     * Gets the stage sprite.
+     * IMPORTANT: Must be called AFTER Tachyon::InitializeScheduler()
+     * @returns The stage sprite.
+     */
+    Scratch::ScratchSprite * GetStage(void);
 
     /**
      * Starts the main VM loop.

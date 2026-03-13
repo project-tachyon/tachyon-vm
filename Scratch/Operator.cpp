@@ -26,7 +26,18 @@ static inline __hot ScratchData Operator_Join(ScratchBlock & Block) {
     return ScratchData(String1 + String2);
 }
 
+static inline __hot ScratchData Operator_Equals(ScratchBlock & Block) {
+    ScratchData Data1 = Block.GetInputData(0);
+    ScratchData Data2 = Block.GetInputData(1);
+
+    std::string String1 = Data2String(Data1);
+    std::string String2 = Data2String(Data2);
+
+    return bool(String1 == String2);
+}
+
 void Operator::RegisterAll(void) {
     Tachyon::RegisterEvaluationHandler("operator_add", Operator_Add);
     Tachyon::RegisterEvaluationHandler("operator_join", Operator_Join);
+    Tachyon::RegisterEvaluationHandler("operator_equals", Operator_Equals);
 }

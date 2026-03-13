@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Tachyon/Debug.hpp>
 #include <Scratch/Procedures.hpp>
 #include <Scratch/Motion.hpp>
 #include <Scratch/Blocks.hpp>
@@ -11,7 +12,6 @@
 #include <iostream>
 #include <memory>
 #include <unordered_map>
-#include <stack>
 #include <zip.h>
 
 using namespace simdjson;
@@ -20,8 +20,13 @@ namespace Scratch {
 
     class ScratchSprite;
 
+    /**
+     * Stack information for script.
+     */
     struct Script_StackFrame {
         std::string ReturnId;
+        std::string RepeatId;
+        double RepeatsLeft = -1;
         bool InsideProcedure;
     };
 
@@ -31,10 +36,11 @@ namespace Scratch {
     struct ScratchScript {
         std::string FirstBlockId;
         std::string CurrentBlockId;
-        std::stack<Script_StackFrame> ReturnStack;
+        std::vector<Script_StackFrame> ReturnStack;
         ScratchSprite * Sprite;
         ScratchStatus CurrentStatus;
         bool InsideProcedure;
+        bool ShouldStay;
     };
 
     /**
@@ -161,6 +167,8 @@ namespace Scratch {
                 }
                 this->CreateScripts();
             }
+            ScratchVariable * __hot GetVariable(std::string VarKey);
+            ScratchList * __hot GetList(std::string ListKey);           
 
             std::unordered_map<std::string, ScratchVariable> Variables;
             std::unordered_map<std::string, ScratchList> Lists;

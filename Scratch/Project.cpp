@@ -1,7 +1,7 @@
 #include <Scratch/Common.hpp>
 #include <Scratch/Blocks.hpp>
+#include <Tachyon/Tachyon.hpp>
 #include <Lib/SIMDJson.h>
-#include <stack>
 #include <zip.h>
 
 using namespace simdjson;
@@ -12,13 +12,49 @@ void ScratchSprite::CreateScripts(void) {
         ScratchScript Script {
             .FirstBlockId = Block->GetNextKey(),
             .CurrentBlockId = Block->GetNextKey(),
-            .ReturnStack = std::stack<Script_StackFrame>(),
+            .ReturnStack = std::vector<Script_StackFrame>(),
             .Sprite = this,
             .CurrentStatus = ScratchStatus::SCRATCH_END,
             .InsideProcedure = false,
+            .ShouldStay = false
         };
         this->Scripts.push_back(Script);
+        Script.ReturnStack.reserve(32);
     }
+}
+
+ScratchList * __hot ScratchSprite::GetList(std::string ListKey) {           
+    /* check if it's local */
+    auto LocalItem = this->Lists.find(ListKey);
+    if (LocalItem == this->Lists.end()) {
+        ScratchSprite * Stage = Tachyon::GetStage();
+        if (unlikely(Stage == nullptr)) {
+            return nullptr;
+        }
+        auto GlobalItem = Stage->Lists.find(ListKey);
+        if (unlikely(GlobalItem == Stage->Lists.end())) {
+            return nullptr;
+        }
+        return &GlobalItem->second;
+    }
+    return &LocalItem->second;
+}
+
+ScratchVariable * __hot ScratchSprite::GetVariable(std::string VarKey) {           
+    /* check if it's local */
+    auto LocalItem = this->Variables.find(VarKey);
+    if (LocalItem == this->Variables.end()) {
+        ScratchSprite * Stage = Tachyon::GetStage();
+        if (unlikely(Stage == nullptr)) {
+            return nullptr;
+        }
+        auto GlobalItem = Stage->Variables.find(VarKey);
+        if (unlikely(GlobalItem == Stage->Variables.end())) {
+            return nullptr;
+        }
+        return &GlobalItem->second;
+    }
+    return &LocalItem->second;
 }
 
 int ScratchProject::ParseContents(void) {

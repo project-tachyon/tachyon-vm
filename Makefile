@@ -13,6 +13,7 @@ CPPFLAGS := \
 	-Wformat \
 	-Wformat-security \
 	-I $(SRC)/Include/ \
+	-fno-rtti \
 	-O3 \
 	-msse4
 
