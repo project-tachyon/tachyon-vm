@@ -9,7 +9,8 @@ using namespace Scratch;
 
 void ScratchSprite::ResolveProcedureDefinitions(void) {
     std::cout << "resolving procedure definitions for " << this->Name << std::endl;
-    for(auto & ProcDef : this->ProcedureDefinitions) {
+    for(auto & Item : this->ProcedureDefinitions) {
+        auto & ProcDef = Item.second;
         ScratchInput Input = ProcDef->GetInput(0);
         if (Input.Type == ScratchInput::InputType::InvalidInput || Input.Type != ScratchInput::InputType::ProcedureDefinition) {
             std::cerr << "Invalid procedure definition" << std::endl;
@@ -47,9 +48,14 @@ static inline ScratchStatus __hot Procedures_Call(ScratchBlock & Block) {
             }
             ScratchBlock * ProcBlock = Owner.GetBlockFromId(Procedure.DefinitionKey);
             TachyonAssert(ProcBlock != nullptr);
-            CurrentScript->ReturnStack.push_back({ .ReturnId = Block.GetNextKey(), .RepeatId = std::string(), .RepeatsLeft = -1, .InsideProcedure = CurrentScript->InsideProcedure });
-            CurrentScript->InsideProcedure = true;
-            CurrentScript->CurrentBlockId = Procedure.DefinitionKey;
+            CurrentScript->ReturnStack.push_back({
+                .ReturnId = Block.GetNextKey(),
+                .RepeatId = std::string(),
+                .RepeatsLeft = -1,
+                .InsideProcedure = GetControlFlag(*CurrentScript, SCRIPT_INSIDE_PROCEDURE) 
+            });
+            SetControlFlag(*CurrentScript, (SCRIPT_SHOULD_STAY | SCRIPT_INSIDE_PROCEDURE | SCRIPT_INVALIDATE_BLOCK));
+            CurrentScript->CurrentBlockId = ProcBlock->GetNextKey();
             return ScratchStatus::SCRATCH_NEXT;
         }
     }

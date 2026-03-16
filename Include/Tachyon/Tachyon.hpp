@@ -29,6 +29,7 @@ namespace Tachyon {
         TachyonConfig Configuration;
         SDL_Window * TachyonWindow = nullptr;
         SDL_Renderer * TachyonRenderer = nullptr;
+        double Timer = 0;
         bool ShouldExit = false;
         bool RendererUpdate = false;
     };

@@ -6,14 +6,15 @@
 #include <Tachyon/Debug.hpp>
 #include <string_view>
 #include <vector>
+#include <deque>
 
 using namespace Scratch;
 
 /**
  * A queue.
  */
-static std::vector<ScratchScript> SchedulerRunQueue;
-static std::vector<ScratchScript> SchedulerYieldQueue;
+static std::deque<ScratchScript> SchedulerRunQueue;
+static std::deque<ScratchScript> SchedulerYieldQueue;
 
 static ScratchScript * CurrentScript = nullptr;
 static ScratchSprite * Stage = nullptr;
@@ -51,13 +52,13 @@ void Tachyon::RegisterEvaluationHandler(std::string_view Opcode, EvaluationHandl
 
 /* tachyon stuff */
 
-ScratchSprite * Tachyon::GetStage(void) {
+ScratchSprite * __hot Tachyon::GetStage(void) {
     return Stage;
 }
 
 /* scheduler stuff */
 
-ScratchScript * Tachyon::GetCurrentScript(void) {
+ScratchScript * __hot Tachyon::GetCurrentScript(void) {
     return CurrentScript;
 }
 
@@ -77,51 +78,88 @@ void Tachyon::InitializeScheduler(ScratchProject & Project) {
     }
 }
 
-static inline ScratchStatus ExecuteScript(ScratchScript & Script) {
-    while(Script.CurrentBlockId.empty() == false) {
+static inline ScratchStatus __hot ExecuteScript(ScratchScript & Script) {
+    while(true) {
         ScratchBlock * Block = Script.Sprite->GetBlockFromId(Script.CurrentBlockId);
         if (unlikely(Block == nullptr)) {
-            DebugError("WARNING: Invalid block ID: ", Script.CurrentBlockId.c_str());
+            DebugError("WARNING: Invalid block ID: %s\n", Script.CurrentBlockId.c_str());
             return ScratchStatus::SCRATCH_END;
         }
         /* execute block */
+        DebugInfo("opcode: %s\n", Block->GetOpcode().c_str());
         ScratchStatus Status = Block->Execute();
         if (Status != ScratchStatus::SCRATCH_NEXT) {
             return Status;
         }
-        if (Script.InsideProcedure == true) {
-            if (unlikely(Block->GetNextKey().empty())) {
-                Script_StackFrame CurrentStackFrame = Script.ReturnStack.back();
-                Script.InsideProcedure = CurrentStackFrame.InsideProcedure;
-                Script.CurrentBlockId = CurrentStackFrame.ReturnId;
-                Script.ReturnStack.pop_back();
-                continue;
-            } else {
-                Block = Script.Sprite->GetBlockFromId(Script.CurrentBlockId);
-            }
-        }
-        if (Script.ShouldStay == false) {
-            Script.CurrentBlockId = Block->GetNextKey();
+        if (GetControlFlag(Script, SCRIPT_INVALIDATE_BLOCK) == true) {
+            /* validate */
+            UnsetControlFlag(Script, SCRIPT_INVALIDATE_BLOCK);
             if (unlikely(Script.CurrentBlockId.empty() == true)) {
-                Script_StackFrame & CurrentStackFrame = Script.ReturnStack.back();
-                if (CurrentStackFrame.RepeatsLeft < 0) {
-                    return ScratchStatus::SCRATCH_END;
-                }
-                CurrentStackFrame.RepeatsLeft--;
-                if (likely(CurrentStackFrame.RepeatsLeft < 0)) {
-                    Script.CurrentBlockId = CurrentStackFrame.ReturnId;
-                    Script.InsideProcedure = CurrentStackFrame.InsideProcedure;
-                    Script.ReturnStack.pop_back();
+                if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == true) {
+                    /* get out */
+                    ScriptReturn(Script);
                     continue;
                 }
-                Script.CurrentBlockId = CurrentStackFrame.RepeatId;
             }
-        } else {
-            /* reset */
-            Script.ShouldStay = false;
+            Block = Script.Sprite->GetBlockFromId(Script.CurrentBlockId);
+        }
+        if (GetControlFlag(Script, SCRIPT_SHOULD_STAY) == true) {
+            UnsetControlFlag(Script, SCRIPT_SHOULD_STAY);
+            continue;
+        }
+        std::string NextId = Block->GetNextKey();
+        if (likely(NextId.empty() == false)) {
+            Script.CurrentBlockId = NextId;
+            continue;
+        }
+        /* we're either done executing, or repeating */
+        if (unlikely(Script.ReturnStack.empty() == true)) {
+            DebugInfo("Done executing.\n");
+            return ScratchStatus::SCRATCH_END;
+        }
+        Script_StackFrame & CurrentStackFrame = Script.ReturnStack.back();
+        /* its possible we're just an ending procedure */
+        if (CurrentStackFrame.RepeatsLeft < 0) {
+            if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == false) {
+                return ScratchStatus::SCRATCH_END;
+            }
+            UnsetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE);
+            ScriptReturn(Script);
+            continue;
+        }
+        /* repeats should only be below here */
+        CurrentStackFrame.RepeatsLeft--;
+        if (CurrentStackFrame.RepeatsLeft < 0) {
+            ScriptReturn(Script);
+            if (Script.CurrentBlockId.empty() == true) {
+                if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == false) {
+                    return ScratchStatus::SCRATCH_END;
+                }
+                UnsetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE);
+                ScriptReturn(Script);
+            }
+            continue;
+        }
+        Script.CurrentBlockId = CurrentStackFrame.RepeatId;
+    }
+    __unreachable;
+}
+
+static inline void DumpScriptInformation(ScratchScript & Script) {
+    DebugInfo("---- SCRIPT INFORMATION DUMP ----\n");
+    DebugInfo("Owner sprite name: %s\n", Script.Sprite->GetName().data());
+    DebugInfo("First block ID: %s\n", Script.FirstBlockId.c_str());
+    DebugInfo("Return stack total pending calls: %d\n", Script.ReturnStack.size());
+    DebugInfo("Script CFLAGS: 0x%02x\n", Script.ControlFlags);
+    DebugInfo("Script stack backtrace:\n");
+    for(const Script_StackFrame & StackFrame : Script.ReturnStack) {
+        DebugInfo("\tReturn block ID: %s\n", StackFrame.ReturnId.c_str());
+        DebugInfo("\tWas in procedure? %s\n", StackFrame.InsideProcedure ? "true" : "false");
+        if (StackFrame.RepeatId.empty() == false) {
+            DebugInfo("\tRepeat start block ID: %s\n", StackFrame.RepeatId.c_str());
+            DebugInfo("\tTotal repeats left: %d\n", StackFrame.RepeatsLeft + 1);
         }
     }
-    return ScratchStatus::SCRATCH_END;
 }
 
 bool __hot Tachyon::Step(void) {
@@ -133,6 +171,8 @@ bool __hot Tachyon::Step(void) {
     /* NOTE: waking up scripts isnt implemeneted, so they'll be sleeping beauty for the time being */
     CurrentScript = &SchedulerRunQueue.at(0);
     ScratchStatus Status = ExecuteScript(*CurrentScript);
+    /* purely for debugging purposes */
+    DumpScriptInformation(*CurrentScript);
     if (Status == ScratchStatus::SCRATCH_YIELD_WAIT || Status == ScratchStatus::SCRATCH_YIELD_WAIT_UNTIL) {
         /* let others breathe */
         CurrentScript->CurrentStatus = Status;

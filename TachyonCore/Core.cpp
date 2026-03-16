@@ -1,3 +1,5 @@
+#include "Scratch/Reporters.hpp"
+#include <Scratch/Sensing.hpp>
 #include <Scratch/Looks.hpp>
 #include <Scratch/Data.hpp>
 #include <Scratch/Procedures.hpp>
@@ -37,6 +39,8 @@ int Tachyon::Init(void) {
     Scratch::Data::RegisterAll();
     Scratch::Looks::RegisterAll();
     Scratch::ControlFlow::RegisterAll();
+    Scratch::Sensing::RegisterAll();
+    Scratch::Reporters::RegisterAll();
     Tachyon::Psuedo::RegisterAll();
     /* EXPERIMENTAL FEATURE */
     VM.Configuration |= TACHYON_CFG_PBLOCK;

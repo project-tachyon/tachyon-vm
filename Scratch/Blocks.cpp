@@ -14,7 +14,7 @@ using namespace simdjson;
 using namespace Scratch;
 
 ScratchData __hot ScratchBlock::GetInputData(size_t InputNum) {
-    if ((InputNum > this->Inputs.size()) || this->Inputs.empty() ) {
+    if (unlikely((InputNum > this->Inputs.size() - 1) || this->Inputs.empty())) {
         return ScratchData(double(0));
     }
     ScratchInput & Input = this->Inputs[InputNum];
@@ -56,7 +56,7 @@ ScratchData __hot ScratchBlock::GetInputData(size_t InputNum) {
 }
 
 ScratchInput __hot ScratchBlock::GetInput(size_t InputNum) {
-    if ((InputNum > this->Inputs.size()) || this->Inputs.empty() ) {
+    if (unlikely((InputNum > this->Inputs.size() - 1) || this->Inputs.empty())) {
         struct ScratchInput Input;
         Input.Type = ScratchInput::InputType::InvalidInput;
         return Input;
@@ -65,7 +65,7 @@ ScratchInput __hot ScratchBlock::GetInput(size_t InputNum) {
 }
 
 ScratchField __hot ScratchBlock::GetField(size_t FieldNum) {
-    if ((FieldNum > this->Fields.size()) || this->Fields.empty() ) {
+    if (unlikely((FieldNum > this->Fields.size() - 1) || this->Fields.empty())) {
         struct ScratchField Field;
         Field.Type = ScratchField::FieldType::InvalidField;
         return Field;
@@ -164,7 +164,8 @@ ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputOb
     if (Key == "VALUE" || Key == "MESSAGE" || Key == "STRING1"
         || Key == "STRING1" || Key == "STRING2" || Key == "OPERAND1"
         || Key == "OPERAND2" || Key == "ITEM" || Key == "INDEX"
-        || Key == "TIMES" || Key == "NUM1" || Key == "NUM2") {
+        || Key == "TIMES" || Key == "NUM1" || Key == "NUM2"
+        || Key == "STRING" || Key == "NUM" || Key == "LETTER") {
         Input.Type = ScratchInput::InputType::ValueInput;
         /* setup value input */
         struct Input_Value Value;
@@ -177,9 +178,6 @@ ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputOb
                 InputObject.reset();
                 Input.HasReporter = false;
                 break;
-            }
-            case INPUT_NO_SHADOW: {
-                return Input;
             }
             case INPUT_REPORTER_BLOCK: {
                 ondemand::array ValueArray;
@@ -213,11 +211,31 @@ ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputOb
         }
     } else if (Key == "CONDITION") {
         Input.Type = ScratchInput::InputType::ConditionInput;
-        Input.Input = std::string(InputObject.at(1)->get_string().value());
-        /* setup conditional input, ignore shadow type */
+        if (InputObject.at(1)->is_null() == true) {
+            InputObject.reset();
+            Input.Input = std::string();
+        } else {
+            InputObject.reset();
+            Input.Input = std::string(InputObject.at(1)->get_string().value());
+        }
     } else if (Key == "SUBSTACK" || Key == "SUBSTACK2") {
         Input.Type = ScratchInput::InputType::SubstackInput;
-        Input.Input = std::string(InputObject.at(1)->get_string().value());
+        if (InputObject.at(1)->is_null() == true) {
+            InputObject.reset();
+            Input.Input = std::string();
+        } else {
+            InputObject.reset();
+            Input.Input = std::string(InputObject.at(1)->get_string().value());
+        }
+    } else if (Key == "OPERAND") {
+        Input.Type = ScratchInput::InputType::BooleanInput;
+        if (InputObject.at(1)->is_null() == true) {
+            Input.Input = std::string();
+        } else {
+            InputObject.reset();
+            Input.Input = std::string(InputObject.at(1)->get_string().value());
+        }
+        return Input;
     } else {
         if (this->IsProcedureDef() == true) {
             Input.Type = ScratchInput::InputType::ProcedureDefinition;
@@ -247,6 +265,12 @@ ScratchField ScratchBlock::ParseField(std::string & Key, ondemand::array FieldOb
         VariableField.VariableKey = VariableKey;
         VariableField.VariableName = VariableName;
         Field.Field = VariableField;
+    } else if (Key == "VALUE") {
+        std::string Value(FieldObject.at(0)->get_string().value());
+        FieldObject.reset();
+
+        Field.Type = ScratchField::FieldType::ValueField;
+        Field.Field = Value;
     } else if (Key == "STOP_OPTION") {
         std::string StopOption(FieldObject.at(0)->get_string().value());
         FieldObject.reset();

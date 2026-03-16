@@ -8,15 +8,15 @@ using namespace simdjson;
 using namespace Scratch;
 
 void ScratchSprite::CreateScripts(void) {
-    for(auto & Block : this->GreenFlags) {
+    for(auto & Item : this->GreenFlags) {
+        auto & Block = Item.second;
         ScratchScript Script {
             .FirstBlockId = Block->GetNextKey(),
             .CurrentBlockId = Block->GetNextKey(),
             .ReturnStack = std::vector<Script_StackFrame>(),
             .Sprite = this,
             .CurrentStatus = ScratchStatus::SCRATCH_END,
-            .InsideProcedure = false,
-            .ShouldStay = false
+            .ControlFlags = 0,
         };
         this->Scripts.push_back(Script);
         Script.ReturnStack.reserve(32);

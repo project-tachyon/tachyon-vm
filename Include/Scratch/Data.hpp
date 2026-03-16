@@ -8,6 +8,7 @@
 #include <limits>
 #include <string_view>
 #include <string>
+#include <variant>
 
 using namespace simdjson;
 
@@ -337,26 +338,82 @@ SkipChecks:
                 ListData.reset();
                 this->Public = IsPublic;
                 /* prepare for lazy loading */
-                DataJson = ListData.at(1).get_array().value();
-                this->TotalItems = DataJson.count_elements();
+                ListJson = padded_string(ListData.at(1).get_array()->raw_json());
+                ListData.reset();
+                this->TotalItems = ListData.at(1)->get_array()->count_elements();
+                ListData.reset();
                 if (this->TotalItems >= 200000) {
                     DebugWarn("List \"%s\" goes over 200,000 items; memory usage is bound to increase.\n", this->Name.c_str());
                     DebugInfo("To reduce memory usage, consider using psuedo-blocks to create a less memory-expensive buffer\n");
                 }
-                /* we dont load it. we lazily load things on-demand */
+                this->BeLazy = true;
+            }
+
+            // ~ScratchList() {
+            //     if (std::holds_alternative<uint8_t *>(this->Elements)) {
+            //         uint8_t * Buffer = std::get<uint8_t *>(this->Elements);
+            //         delete Buffer;
+            //     }
+            // }
+
+            inline void __hot SwitchToBuffer(void) {
+                if (std::holds_alternative<uint8_t *>(this->Elements)) {
+                    /* you're already a buffer pal */
+                    return;
+                }
+                std::vector<ScratchData> Data; 
+                uint8_t * NewBuffer = new uint8_t(this->TotalItems);
+                size_t Index;
+                for(auto & Item : Data) {
+                    if (unlikely(Item.Type == ScratchData::Type::Number)) {
+                        DebugError("Failed to load buffer. The list NEEDS to only have numbers, and they can't be greater than 256.\n");
+                    }
+                    uint8_t Byte(Item.Number);
+                    NewBuffer[Index++] = Byte;
+                }
+                DebugInfo("Buffer %s is ready for use\n", this->Name.c_str());
+            }
+
+            inline void __hot ClearElements(void) {
+                if (std::holds_alternative<std::vector<ScratchData>>(this->Elements)) {
+                    std::vector<ScratchData> ElementVector = std::get<std::vector<ScratchData>>(this->Elements);
+                    ElementVector.clear();
+                } else {
+                    uint8_t * Buffer = std::get<uint8_t *>(this->Elements);
+                    memset(Buffer, 0, this->TotalItems);
+                }
+                this->BeLazy = false;
             }
 
             inline ScratchData __hot Get(size_t ItemIndex) {
-                if (ItemIndex >= this->TotalItems) {
+                if (ItemIndex >= (this->TotalItems - 1)) {
                     return ScratchData("");
                 }
-                return ScratchData("haha");
+                if (this->BeLazy == false) {   
+                    if (std::holds_alternative<std::vector<ScratchData>>(this->Elements)) {
+                        std::vector<ScratchData> ElementVector = std::get<std::vector<ScratchData>>(this->Elements);
+                        return ElementVector.at(ItemIndex);
+                    } else {
+                        uint8_t * Buffer = std::get<uint8_t *>(this->Elements);
+                        return ScratchData(double(Buffer[ItemIndex]));
+                    }
+                }
+                return ScratchData("");
+            }
+
+            inline void __hot Append(ScratchData & Data) {
+                if (std::holds_alternative<std::vector<ScratchData>>(this->Elements)) {
+                    std::vector<ScratchData> ElementVector = std::get<std::vector<ScratchData>>(this->Elements);
+                    ElementVector.push_back(Data);
+                } else {
+                    DebugWarn("Cannot append items to buffer.\n");
+                }
             }
             size_t TotalItems = 0;
         private:
             padded_string ListJson;
-            ondemand::array DataJson;
-            std::vector<ScratchData> Elements;
+            std::variant<std::vector<ScratchData>, uint8_t *> Elements;
+            bool BeLazy;
     };
 
     namespace Data {

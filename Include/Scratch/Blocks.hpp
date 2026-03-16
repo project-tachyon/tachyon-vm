@@ -94,7 +94,17 @@ namespace Scratch {
                         std::string InputKey = std::string(InputField.unescaped_key().value());
                         this->Inputs.emplace_back(this->ParseInput(InputKey, InputField.value()));
                     }
+                    if (unlikely(this->Inputs.empty() == false)) {
+                        /* 
+                         * if we sort things out, we could get O(1) access times
+                         * for inputs rather than having scratcheverywhere's string lookup of O(n) 
+                         * */
+                        std::sort(this->Inputs.begin(), this->Inputs.end(), [](const ScratchInput & A, const ScratchInput & B) {
+                            return A.Type < B.Type;
+                        });
+                    }
                 } catch (simdjson_error & Error) {
+                    std::cout << "Inputs: " << BlockData["inputs"] << std::endl;
                     std::cerr << Error.what() << std::endl;
                 }
                 /* fields */
@@ -105,6 +115,7 @@ namespace Scratch {
                         this->Fields.emplace_back(this->ParseField(FieldKey, FieldField.value()));
                     }
                 } catch (simdjson_error & Error) {
+                    std::cout << "Fields: " << BlockData["fields"] << std::endl;
                     std::cerr << Error.what() << std::endl;
                 }
                 /* assign function based on opcode */

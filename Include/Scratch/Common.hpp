@@ -12,9 +12,15 @@
 #include <iostream>
 #include <memory>
 #include <unordered_map>
+#include <map>
 #include <zip.h>
 
 using namespace simdjson;
+
+/* control flags. any bits that arent here are reserved */
+#define SCRIPT_INSIDE_PROCEDURE         (1 << 0)
+#define SCRIPT_INVALIDATE_BLOCK         (1 << 1)
+#define SCRIPT_SHOULD_STAY              (1 << 2)
 
 namespace Scratch {
 
@@ -39,9 +45,42 @@ namespace Scratch {
         std::vector<Script_StackFrame> ReturnStack;
         ScratchSprite * Sprite;
         ScratchStatus CurrentStatus;
-        bool InsideProcedure;
-        bool ShouldStay;
+        uint8_t ControlFlags;
     };
+
+    static inline void __hot SetControlFlag(ScratchScript & Script, uint8_t Flag) {
+        Script.ControlFlags |= Flag;
+    }
+
+    static inline void __hot UnsetControlFlag(ScratchScript & Script, uint8_t Flag) {
+        Script.ControlFlags &= ~(Flag);
+    }
+
+    static inline bool __hot GetControlFlag(ScratchScript & Script, uint8_t Flag) {
+        return (Script.ControlFlags & Flag);
+    }
+
+    static inline void __hot ScriptReturn(ScratchScript & Script) {
+        if (Script.ReturnStack.empty() == true) {
+            DebugError("Return stack is EMPTY!\n");
+            DebugInfo("Script control flags: 0x%02x\n", Script.ControlFlags);
+            return;
+        }
+        Script_StackFrame & CurrentStackFrame = Script.ReturnStack.back();
+        /* restore procedure control flag */
+        Script.ControlFlags &= ~(SCRIPT_INSIDE_PROCEDURE);
+        Script.ControlFlags |= CurrentStackFrame.InsideProcedure;
+
+        Script.CurrentBlockId = CurrentStackFrame.ReturnId;
+        Script.ReturnStack.pop_back();
+    }
+
+inline uint32_t IdToU32(const std::string_view Key) {
+    /* no real reason to put this. just thought it'd be funny */
+    uint32_t IdU32 = 0;
+    memcpy(&IdU32, Key.data(), std::min(Key.size(), sizeof(uint32_t)));
+    return IdU32;
+}
 
     /**
      * Contains a scratch sprite's information.
@@ -71,15 +110,14 @@ namespace Scratch {
                 if (unlikely(Id.empty() == true)) {
                     return nullptr;
                 }
-                for(auto & Block : this->Blocks) {
-                    if (Block->GetKey() == Id) {
-                        return Block.get();
-                    }
+                uint32_t IdU32 = IdToU32(Id);
+                auto Item = this->Blocks.find(IdU32);
+                if (unlikely(Item != this->Blocks.end())) {
+                    return Item->second.get();
                 }
-                for(auto & ProcBlock : this->ProcedureDefinitions) {
-                    if (ProcBlock->GetKey() == Id) {
-                        return ProcBlock.get();
-                    }
+                Item = this->ProcedureDefinitions.find(IdU32);
+                if (unlikely(Item != this->ProcedureDefinitions.end())) {
+                    return Item->second.get();
                 }
                 return nullptr;
             }
@@ -151,11 +189,11 @@ namespace Scratch {
                         std::string BlockKey(BlockField.unescaped_key().value());
                         std::unique_ptr<ScratchBlock> Block = std::make_unique<ScratchBlock>(BlockKey, BlockField.value(), *this);
                         if (Block->GetOpcode() == "event_whenflagclicked") {
-                            GreenFlags.push_back(std::move(Block));
+                            GreenFlags.insert({ IdToU32(BlockKey), std::move(Block) });
                         } else if (Block->IsProcedureDef() == true) {
-                            ProcedureDefinitions.push_back(std::move(Block));
+                            ProcedureDefinitions.insert({ IdToU32(BlockKey), std::move(Block) });
                         } else {
-                            Blocks.push_back(std::move(Block));
+                            Blocks.insert({ IdToU32(BlockKey), std::move(Block) });
                         }
                     } catch (simdjson_error &Error) {
                         std::cerr << "failed to load block: " << Error.what() << std::endl;
@@ -173,9 +211,9 @@ namespace Scratch {
             std::unordered_map<std::string, ScratchVariable> Variables;
             std::unordered_map<std::string, ScratchList> Lists;
             std::unordered_map<std::string, ScratchBroadcast> Broadcasts;
-            std::vector<std::unique_ptr<ScratchBlock>> Blocks;
-            std::vector<std::unique_ptr<ScratchBlock>> GreenFlags;
-            std::vector<std::unique_ptr<ScratchBlock>> ProcedureDefinitions;
+            std::unordered_map<uint32_t, std::unique_ptr<ScratchBlock>> Blocks;
+            std::map<uint32_t, std::unique_ptr<ScratchBlock>> GreenFlags;
+            std::unordered_map<uint32_t, std::unique_ptr<ScratchBlock>> ProcedureDefinitions;
             std::vector<ScratchScript> Scripts;
             std::vector<ScratchProcedure> Procedures;
             ScratchPosition Position;
