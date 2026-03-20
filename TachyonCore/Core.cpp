@@ -1,15 +1,17 @@
-#include "Scratch/Reporters.hpp"
+#include <Scratch/ControlFlow.hpp>
+#include <Scratch/Reporters.hpp>
 #include <Scratch/Sensing.hpp>
 #include <Scratch/Looks.hpp>
 #include <Scratch/Data.hpp>
 #include <Scratch/Procedures.hpp>
 #include <Scratch/Operator.hpp>
 #include <Scratch/Motion.hpp>
-#include <Scratch/ControlFlow.hpp>
-#include <SDL3/SDL_main.h>
-#include <SDL3/SDL_timer.h>
 #include <Scratch/Common.hpp>
 #include <Tachyon/Tachyon.hpp>
+#include <Tachyon/Events.hpp>
+#include <SDL3/SDL_main.h>
+#include <SDL3/SDL_timer.h>
+#include <SDL3/SDL_video.h>
 
 static Tachyon::VirtualMachine VM;
 static bool TachyonInitialized = false;
@@ -41,6 +43,7 @@ int Tachyon::Init(void) {
     Scratch::ControlFlow::RegisterAll();
     Scratch::Sensing::RegisterAll();
     Scratch::Reporters::RegisterAll();
+    Scratch::Events::RegisterAll();
     Tachyon::Psuedo::RegisterAll();
     /* EXPERIMENTAL FEATURE */
     VM.Configuration |= TACHYON_CFG_PBLOCK;
@@ -48,8 +51,17 @@ int Tachyon::Init(void) {
     return 0;
 }
 
+
 Tachyon::VirtualMachine * Tachyon::GetVM(void) {
     return &VM;
+}
+
+Scratch::ScratchProject * Tachyon::GetLoadedProject(void) {
+    return VM.Project;
+}
+
+Tachyon::TachyonConfig __hot Tachyon::GetConfigVM(void) {
+    return VM.Configuration;
 }
 
 void __hot Tachyon::Render(void) {

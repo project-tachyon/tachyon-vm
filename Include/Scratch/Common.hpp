@@ -75,12 +75,16 @@ namespace Scratch {
         Script.ReturnStack.pop_back();
     }
 
-inline uint32_t IdToU32(const std::string_view Key) {
-    /* no real reason to put this. just thought it'd be funny */
-    uint32_t IdU32 = 0;
-    memcpy(&IdU32, Key.data(), std::min(Key.size(), sizeof(uint32_t)));
-    return IdU32;
-}
+    /**
+     * Only works for block keys.
+     * @param The block key
+     * @return A 64-bit ID
+     */
+    inline uint32_t IdToU64(const std::string_view Key) {
+        uint64_t IdU64 = 0;
+        memcpy(&IdU64, Key.data(), std::min(Key.size(), sizeof(uint64_t)));
+        return IdU64;
+    }
 
     /**
      * Contains a scratch sprite's information.
@@ -110,7 +114,7 @@ inline uint32_t IdToU32(const std::string_view Key) {
                 if (unlikely(Id.empty() == true)) {
                     return nullptr;
                 }
-                uint32_t IdU32 = IdToU32(Id);
+                uint32_t IdU32 = IdToU64(Id);
                 auto Item = this->Blocks.find(IdU32);
                 if (unlikely(Item != this->Blocks.end())) {
                     return Item->second.get();
@@ -174,26 +178,22 @@ inline uint32_t IdToU32(const std::string_view Key) {
                         std::cerr << "failed to load list: " << Error.what() << std::endl;
                     }
                 }
-                /* broadcasts */
-                ondemand::object BroadcastData = SpriteData["broadcasts"]->get_object().value();
-                for (ondemand::field BroadcastField : BroadcastData) {
-                    std::string BroadcastKey(BroadcastField.unescaped_key().value());
-                    std::string BroadcastName(BroadcastField.value().get_string().value());
-                    ScratchBroadcast Broadcast = { .Name = BroadcastName, .Key = BroadcastKey };
-                    this->Broadcasts.emplace();
-                }
                 /* blocks */
                 ondemand::object BlockData = SpriteData["blocks"]->get_object().value();
                 for (ondemand::field BlockField : BlockData) {
                     try {
                         std::string BlockKey(BlockField.unescaped_key().value());
+                        /* lightning fast when looking for blocks */
+                        uint64_t BlockIdU64 = IdToU64(BlockKey);
                         std::unique_ptr<ScratchBlock> Block = std::make_unique<ScratchBlock>(BlockKey, BlockField.value(), *this);
                         if (Block->GetOpcode() == "event_whenflagclicked") {
-                            GreenFlags.insert({ IdToU32(BlockKey), std::move(Block) });
+                            this->GreenFlags.insert({ BlockIdU64, std::move(Block) });
                         } else if (Block->IsProcedureDef() == true) {
-                            ProcedureDefinitions.insert({ IdToU32(BlockKey), std::move(Block) });
+                            this->ProcedureDefinitions.insert({ BlockIdU64, std::move(Block) });
+                        } else if (Block->GetOpcode() == "event_whenbroadcastreceived") {
+                            this->BroadcastReceivers.insert({ BlockIdU64, std::move(Block) });
                         } else {
-                            Blocks.insert({ IdToU32(BlockKey), std::move(Block) });
+                            this->Blocks.insert({ BlockIdU64, std::move(Block) });
                         }
                     } catch (simdjson_error &Error) {
                         std::cerr << "failed to load block: " << Error.what() << std::endl;
@@ -205,15 +205,16 @@ inline uint32_t IdToU32(const std::string_view Key) {
                 }
                 this->CreateScripts();
             }
+            void CreateScript(ScratchBlock & Block);
             ScratchVariable * __hot GetVariable(std::string VarKey);
             ScratchList * __hot GetList(std::string ListKey);           
 
+            std::map<uint32_t, std::unique_ptr<ScratchBlock>> GreenFlags;
+            std::unordered_map<uint32_t, std::unique_ptr<ScratchBlock>> BroadcastReceivers;
+            std::unordered_map<uint32_t, std::unique_ptr<ScratchBlock>> Blocks;
+            std::unordered_map<uint32_t, std::unique_ptr<ScratchBlock>> ProcedureDefinitions;
             std::unordered_map<std::string, ScratchVariable> Variables;
             std::unordered_map<std::string, ScratchList> Lists;
-            std::unordered_map<std::string, ScratchBroadcast> Broadcasts;
-            std::unordered_map<uint32_t, std::unique_ptr<ScratchBlock>> Blocks;
-            std::map<uint32_t, std::unique_ptr<ScratchBlock>> GreenFlags;
-            std::unordered_map<uint32_t, std::unique_ptr<ScratchBlock>> ProcedureDefinitions;
             std::vector<ScratchScript> Scripts;
             std::vector<ScratchProcedure> Procedures;
             ScratchPosition Position;
@@ -242,9 +243,11 @@ inline uint32_t IdToU32(const std::string_view Key) {
                 }
                 this->ProjectZip_Path = ZipPath;
             }
+
             ~ScratchProject(void) {
                 Close();
             }
+
             /**
              * De-initializes and closes the project and it's file.
              */
@@ -257,13 +260,15 @@ inline uint32_t IdToU32(const std::string_view Key) {
                 this->Sprites.clear();
                 this->ProjectZip_Path.clear();
             }
+
+            //ScratchBlock * SearchBroadcast(std::string_view Name);
+
             /**
              * Checks whether the project has been loaded.
              * @return Returns true if it has been loaded, otherwise false.
              */
             bool IsLoaded(void) {
-                /* false if empty, true if otherwise */
-                return !ProjectZip_Path.empty();
+                return ProjectZip_Path.empty() == false;
             }
 
             /**

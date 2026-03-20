@@ -39,7 +39,7 @@ static inline ScratchStatus __hot Procedures_Call(ScratchBlock & Block) {
             if (unlikely(CurrentScript == nullptr)) {
                 return ScratchStatus::SCRATCH_END;
             }
-            if (Tachyon::GetVM()->Configuration & TACHYON_CFG_PBLOCK) {
+            if (Tachyon::GetConfigVM() & TACHYON_CFG_PBLOCK) {
                 if (Tachyon::Psuedo::IsPsuedo(Procedure.ProcCode) == true) {
                     /* act as if nothing ever happened */
                     CurrentScript->CurrentBlockId = Block.GetNextKey();

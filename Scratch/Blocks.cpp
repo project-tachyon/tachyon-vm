@@ -7,24 +7,26 @@
 #include <Lib/SIMDJson.h>
 #include <Compiler.hpp>
 #include <iostream>
-#include <cstdint>
 #include <variant>
 
 using namespace simdjson;
 using namespace Scratch;
 
 ScratchData __hot ScratchBlock::GetInputData(size_t InputNum) {
+    /* bad InputNum */
     if (unlikely((InputNum > this->Inputs.size() - 1) || this->Inputs.empty())) {
         return ScratchData(double(0));
     }
     ScratchInput & Input = this->Inputs[InputNum];
     if (Input.HasReporter == true) {
+        /* get it from the connected block instead */
         ScratchSprite & OwnerSprite = this->Sprite.get();
         ScratchBlock * ReporterBlock = OwnerSprite.GetBlockFromId(Input.ReporterKey);
         TachyonAssert(ReporterBlock != nullptr);
         ScratchData ReporterResult = ReporterBlock->Evaluate();
         return ReporterResult;
     }
+    /* a normal input value */
     if (Input.Type == ScratchInput::InputType::ValueInput) {
         Input_Value InputValue = std::get<Input_Value>(Input.Input);
         ScratchSprite & OwnerSprite = this->GetOwnerSprite();
@@ -80,20 +82,11 @@ ScratchSprite & __hot ScratchBlock::GetOwnerSprite(void) {
 static struct Input_Value SetupInputValue(ondemand::array & RawArray) {
     struct Input_Value Value;
     RawArray.reset();
-    Value.PrimitiveType = uint8_t(RawArray.at(0).get_uint64() & 0xFF);
+    Value.PrimitiveType = ScratchPrimitive(RawArray.at(0).get_uint64() & 0xFF);
     RawArray.reset();
+    /* yes i know the code looks like shit, but it works */
     switch(Value.PrimitiveType) {
-        case INPUT_PRIMITIVE_BROADCAST: {
-            Field_Broadcast Broadcast;
-            Broadcast.BroadcastName = std::string(RawArray.at(1)->get_string().value());
-            RawArray.reset();
-            Broadcast.BroadcastKey = std::string(RawArray.at(2)->get_string().value());
-            RawArray.reset();
-            Value.Value = Broadcast;
-            break;
-        }
-        /* yes i know the code is repetitive but it works for now */
-        case INPUT_PRIMITIVE_VAR: {
+        case ScratchPrimitive::INPUT_VAR: {
             Field_Variable Variable;
             Variable.VariableName = std::string(RawArray.at(1)->get_string().value());
             RawArray.reset();
@@ -103,7 +96,7 @@ static struct Input_Value SetupInputValue(ondemand::array & RawArray) {
             Value.Value = Variable;
             break;
         }
-        case INPUT_PRIMITIVE_LIST: {
+        case ScratchPrimitive::INPUT_LIST: {
             Field_Variable Variable;
             Variable.VariableName = std::string(RawArray.at(1)->get_string().value());
             RawArray.reset();
@@ -158,7 +151,7 @@ ScratchMutation ScratchBlock::ParseMutation(ondemand::object MutationObject) {
 
 ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputObject) {
     ScratchInput Input;
-    Input.ShadowType = uint8_t(InputObject.at(0)->get_uint64() & 0xFF);
+    Input.ShadowType = ScratchShadow(InputObject.at(0)->get_uint64() & 0xFF);
     InputObject.reset();
     Input.Type = ScratchInput::InputType::InvalidInput;
     if (Key == "VALUE" || Key == "MESSAGE" || Key == "STRING1"
@@ -170,7 +163,7 @@ ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputOb
         /* setup value input */
         struct Input_Value Value;
         switch(Input.ShadowType) {
-            case INPUT_IS_SHADOW: {
+            case ScratchShadow::INPUT_SAME_BLOCK_SHADOW: {
                 ondemand::array ValueArray = InputObject.at(1).get_array().value();
                 InputObject.reset();
                 /* these usually dont have reporters */
@@ -179,7 +172,7 @@ ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputOb
                 Input.HasReporter = false;
                 break;
             }
-            case INPUT_REPORTER_BLOCK: {
+            case ScratchShadow::INPUT_DIFF_BLOCK_SHADOW: {
                 ondemand::array ValueArray;
                 if (InputObject.at(1).is_string() == true) {
                     /* the typical block chain */
@@ -236,6 +229,11 @@ ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputOb
             Input.Input = std::string(InputObject.at(1)->get_string().value());
         }
         return Input;
+    } else if (Key == "BROADCAST_INPUT") {
+        Input.Type = ScratchInput::InputType::BroadcastInput;
+        ondemand::array ValueArray = InputObject.at(1)->get_array().value();
+        Input.Input = std::string(ValueArray.at(2)->get_string().value());
+        return Input;
     } else {
         if (this->IsProcedureDef() == true) {
             Input.Type = ScratchInput::InputType::ProcedureDefinition;
@@ -277,6 +275,12 @@ ScratchField ScratchBlock::ParseField(std::string & Key, ondemand::array FieldOb
 
         Field.Type = ScratchField::FieldType::StopOption;
         Field.Field = StopOption;
+    } else if (Key == "BROADCAST_OPTION") {
+        std::string BroadcastOption(FieldObject.at(1).get_string().value());
+        FieldObject.reset();
+
+        Field.Type = ScratchField::FieldType::BroadcastField;
+        Field.Field = BroadcastOption;
     }
     return Field;
 }

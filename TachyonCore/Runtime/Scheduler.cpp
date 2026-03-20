@@ -63,6 +63,7 @@ ScratchScript * __hot Tachyon::GetCurrentScript(void) {
 }
 
 void Tachyon::InitializeScheduler(ScratchProject & Project) {
+    Tachyon::GetVM()->Project = &Project;
     /* all scripts are BORN ready */
     for(auto & Sprite : Project.Sprites) {
         for(auto & Script : Sprite->Scripts) {
@@ -73,11 +74,20 @@ void Tachyon::InitializeScheduler(ScratchProject & Project) {
         }
     }
     SchedulerYieldQueue.resize(SchedulerRunQueue.size());
-    if ((Tachyon::GetVM()->Configuration & TACHYON_CFG_PBLOCK) == false) {
+    if ((Tachyon::GetConfigVM() & TACHYON_CFG_PBLOCK) == false) {
         DebugWarn("Psuedo-blocks are disabled. This likely isn't a problem for projects that don't support Tachyon, but for those that do, you may notice a drop in performance and memory efficiency.\n");
     }
 }
 
+void Tachyon::ScriptAddReadyQueue(ScratchScript Script) {
+    SchedulerRunQueue.emplace_back(Script);
+}
+
+/**
+ * This is where scripts are executed if you couldn't already tell.
+ * You damn retard.
+ * @param The script to execute
+ */
 static inline ScratchStatus __hot ExecuteScript(ScratchScript & Script) {
     while(true) {
         ScratchBlock * Block = Script.Sprite->GetBlockFromId(Script.CurrentBlockId);
@@ -173,7 +183,7 @@ bool __hot Tachyon::Step(void) {
     ScratchStatus Status = ExecuteScript(*CurrentScript);
     /* purely for debugging purposes */
     DumpScriptInformation(*CurrentScript);
-    if (Status == ScratchStatus::SCRATCH_YIELD_WAIT || Status == ScratchStatus::SCRATCH_YIELD_WAIT_UNTIL) {
+    if (Status == ScratchStatus::SCRATCH_WAIT || Status == ScratchStatus::SCRATCH_WAIT_UNTIL || Status == ScratchStatus::SCRATCH_PAUSE) {
         /* let others breathe */
         CurrentScript->CurrentStatus = Status;
         SchedulerYieldQueue.emplace_back(*CurrentScript);

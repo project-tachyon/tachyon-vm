@@ -8,6 +8,25 @@
 namespace Scratch {
     class ScratchBlock;
 
+    enum class ScratchShadow : uint8_t {
+        INPUT_SAME_BLOCK_SHADOW = 1,
+        INPUT_BLOCK_NO_SHADOW,
+        INPUT_DIFF_BLOCK_SHADOW
+    };
+
+    enum class ScratchPrimitive : uint8_t {
+        INPUT_MATH_NUM = 4,
+        INPUT_POSITIVE_NUM,
+        INPUT_WHOLE_NUM,
+        INPUT_INTEGER_NUM,
+        INPUT_ANGLE_NUM,
+        INPUT_COLOR_PICKER,
+        INPUT_TEXT,
+        INPUT_BROADCAST,
+        INPUT_VAR,
+        INPUT_LIST
+    };
+
     /*
      * Field object
      */
@@ -18,17 +37,11 @@ namespace Scratch {
         std::string VariableKey;
         enum class VariableType : uint8_t { Regular, List } Type;
     };
-    /* broadcast field */
-    struct Field_Broadcast {
-        std::string BroadcastName;
-        std::string BroadcastKey;
-    };
-
     /**
      * Scratch field descriptor
      */
     struct ScratchField {
-        std::variant<Field_Variable, Field_Broadcast, std::string> Field;
+        std::variant<Field_Variable, std::string> Field;
         enum class FieldType : uint8_t { VariableField, ListField, BroadcastField, StopOption, ValueField, InvalidField } Type;
     };
 
@@ -38,21 +51,21 @@ namespace Scratch {
 
     /* value input */
     struct Input_Value {
-        std::variant<ScratchData, Field_Broadcast, Field_Variable> Value;
-        uint8_t PrimitiveType;
+        std::variant<ScratchData, Field_Variable, std::string> Value;
+        ScratchPrimitive PrimitiveType;
     };
 
     /* operand input */
     struct Input_Operand {
         ScratchData OperandValue;
-        uint8_t PrimitiveType;
+        ScratchPrimitive PrimitiveType;
     };
 
     struct ScratchInput {
         std::variant<Input_Value, std::string> Input;
         std::string ReporterKey;
-        enum class InputType : uint8_t { ConditionInput, SubstackInput, ProcedureDefinition, ValueInput, BooleanInput, InvalidInput } Type;
-        uint8_t ShadowType;
+        enum class InputType : uint8_t { ConditionInput, SubstackInput, ProcedureDefinition, ValueInput, BooleanInput, BroadcastInput, InvalidInput } Type;
+        ScratchShadow ShadowType;
         bool HasReporter;
     };
 };

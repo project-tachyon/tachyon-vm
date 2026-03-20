@@ -8,22 +8,6 @@
 
 using namespace simdjson;
 
-/* input shadow types */
-#define INPUT_IS_SHADOW               1
-#define INPUT_NO_SHADOW               2
-#define INPUT_REPORTER_BLOCK          3
-/* primitives */
-#define INPUT_PRIMITIVE_MATH_NUM      4
-#define INPUT_PRIMITIVE_POSITIVE_NUM  5
-#define INPUT_PRIMITIVE_WHOLE_NUM     6
-#define INPUT_PRIMITIVE_INTEGER_NUM   7
-#define INPUT_PRIMITIVE_ANGLE_NUM     8
-#define INPUT_PRIMITIVE_COLOR_PICKER  9
-#define INPUT_PRIMITIVE_TEXT          10
-#define INPUT_PRIMITIVE_BROADCAST     11
-#define INPUT_PRIMITIVE_VAR           12
-#define INPUT_PRIMITIVE_LIST          13
-
 namespace Scratch {
     class ScratchSprite;
 
@@ -33,8 +17,9 @@ namespace Scratch {
     enum class ScratchStatus : uint8_t {
         SCRATCH_END,
         SCRATCH_NEXT,
-        SCRATCH_YIELD_WAIT,
-        SCRATCH_YIELD_WAIT_UNTIL
+        SCRATCH_PAUSE,
+        SCRATCH_WAIT,
+        SCRATCH_WAIT_UNTIL
     };
 
     class ScratchBlock;
@@ -128,7 +113,7 @@ namespace Scratch {
 
             /**
              * Gets the block's opcode.
-             * @returns The block's opcode.
+             * @return The block's opcode.
              */
             inline std::string & GetOpcode(void) {
                 return this->Opcode;
@@ -136,7 +121,7 @@ namespace Scratch {
 
             /**
              * Gets the next block's key.
-             * @returns The next block's key.
+             * @return The next block's key.
              */
             inline std::string & GetNextKey(void) {
                 return this->NextBlock_Key;
@@ -144,7 +129,7 @@ namespace Scratch {
 
             /**
              * Gets the parent block's key.
-             * @returns The parent block's key.
+             * @return The parent block's key.
              */
             inline std::string & GetParentKey(void) {
                 return this->ParentBlock_Key;
@@ -152,7 +137,7 @@ namespace Scratch {
 
             /**
              * Gets the parent block's key.
-             * @returns The parent block's key.
+             * @return The parent block's key.
              */
             inline std::string & GetKey(void) {
                 return this->BlockKey;
@@ -160,7 +145,7 @@ namespace Scratch {
 
             /**
              * Checks if the block is a procedure definition.
-             * @returns True if it's a procedure definition, false if otherwise.
+             * @return True if it's a procedure definition, false if otherwise.
              */
             inline bool IsProcedureDef(void) {
                 return this->ProcedureDefinition;
@@ -168,7 +153,7 @@ namespace Scratch {
 
             /**
              * Checks if the block is an argument reporter.
-             * @returns True if it's an argument reporter, false if otherwise.
+             * @return True if it's an argument reporter, false if otherwise.
              */
             inline bool IsArgumentReporter(void) {
                 return this->ArgumentReporter;
@@ -205,7 +190,7 @@ namespace Scratch {
 
             /**
              * Get's the block's sprite.
-             * @returns The block's sprite.
+             * @return The block's sprite.
              */
             ScratchSprite & __hot GetOwnerSprite(void);
 

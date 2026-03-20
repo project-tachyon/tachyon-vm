@@ -7,12 +7,26 @@
 using namespace simdjson;
 using namespace Scratch;
 
+void __hot ScratchSprite::CreateScript(ScratchBlock & Block) {
+    ScratchScript Script {
+        .FirstBlockId = Block.GetNextKey(),
+        .CurrentBlockId = Block.GetNextKey(),
+        .ReturnStack = std::vector<Script_StackFrame>(),
+        .Sprite = this,
+        .CurrentStatus = ScratchStatus::SCRATCH_END,
+        .ControlFlags = 0,
+    };
+    this->Scripts.push_back(Script);
+    Script.ReturnStack.reserve(32);
+    Tachyon::ScriptAddReadyQueue(Script);
+}
+
 void ScratchSprite::CreateScripts(void) {
     for(auto & Item : this->GreenFlags) {
-        auto & Block = Item.second;
+        ScratchBlock & Block = *Item.second;
         ScratchScript Script {
-            .FirstBlockId = Block->GetNextKey(),
-            .CurrentBlockId = Block->GetNextKey(),
+            .FirstBlockId = Block.GetNextKey(),
+            .CurrentBlockId = Block.GetNextKey(),
             .ReturnStack = std::vector<Script_StackFrame>(),
             .Sprite = this,
             .CurrentStatus = ScratchStatus::SCRATCH_END,

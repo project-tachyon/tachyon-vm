@@ -21,15 +21,16 @@
  */
 #define TACHYON_CFG_PBLOCK       (1 << 1)
 
-using TachyonConfig = uint16_t;
-
 namespace Tachyon {
     
+    using TachyonConfig = uint16_t;
+
     struct VirtualMachine {
-        TachyonConfig Configuration;
+        Scratch::ScratchProject * Project = nullptr;
         SDL_Window * TachyonWindow = nullptr;
         SDL_Renderer * TachyonRenderer = nullptr;
         double Timer = 0;
+        TachyonConfig Configuration;
         bool ShouldExit = false;
         bool RendererUpdate = false;
     };
@@ -47,20 +48,38 @@ namespace Tachyon {
 
     /**
      * Gets the VM information.
-     * @returns VM information.
+     * @return VM information.
      */
     VirtualMachine * GetVM(void);
 
     /**
+     * Gets the VM configuration.
+     * @return The VM configuration.
+     */
+    TachyonConfig GetConfigVM(void);
+
+    /**
+     * Adds a script to the ready queue of the scheduler.
+     * @param The script
+     */
+    void ScriptAddReadyQueue(Scratch::ScratchScript Script);
+
+    /**
+     * Gets the loaded project.
+     * @return The loaded project.
+     */
+    Scratch::ScratchProject * GetLoadedProject(void);
+
+    /**
      * Gets the currently running script.
-     * @returns The script that is currently running.
+     * @return The script that is currently running.
      */
     Scratch::ScratchScript * GetCurrentScript(void);
 
     /**
      * Gets the stage sprite.
      * IMPORTANT: Must be called AFTER Tachyon::InitializeScheduler()
-     * @returns The stage sprite.
+     * @return The stage sprite.
      */
     Scratch::ScratchSprite * GetStage(void);
 
@@ -72,7 +91,7 @@ namespace Tachyon {
     /**
      * Performs executions.
      * @param The scratch project to execute.
-     * @returns Returns true if the VM should exit, false if otherwise. 
+     * @return Returns true if the VM should exit, false if otherwise. 
      */
     bool __hot Step(void);
 
