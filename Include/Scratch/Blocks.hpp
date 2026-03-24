@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Tachyon/Debug.hpp"
 #include <Scratch/BlockFields.hpp>
 #include <Scratch/Data.hpp>
 #include <Lib/SIMDJson.h>
@@ -54,54 +55,99 @@ namespace Scratch {
              * @param The block's key ID.
              * @param The block's JSON data.
              */
-            ScratchBlock (std::string Key, ondemand::object BlockData, ScratchSprite & Owner) : Sprite(Owner) {
-                /* basic info */
-                this->Opcode = std::string(BlockData["opcode"]->get_string().value());
-                this->TopLevel = BlockData["topLevel"]->get_bool().value();
-                this->Shadow = BlockData["shadow"]->get_bool().value();
+            ScratchBlock (std::string Key, ondemand::object BlockData, ScratchSprite & Owner) : Sprite(Owner), BlockKey(Key) {
+                /*
+                    opcode
+                */
+                simdjson::simdjson_result Result = BlockData.find_field_unordered("opcode");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.get_string().get(this->Opcode) == error_code::SUCCESS);
+                /*
+                    topLevel
+                */
+                Result = BlockData.find_field_unordered("topLevel");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.get_bool().get(this->TopLevel) == error_code::SUCCESS);
+                /*
+                    shadow
+                */
+                Result = BlockData.find_field_unordered("shadow");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.get_bool().get(this->Shadow) == error_code::SUCCESS);
+
                 this->ProcedureDefinition = (this->Opcode == "procedures_definition");
-                this->BlockKey = Key;
-                if (BlockData["next"].is_null() == false) {
-                    this->NextBlock_Key = std::string(BlockData["next"]->get_string().value());
+                this->ProcedurePrototype = (this->Opcode == "procedures_prototype");
+                this->ProcedureCall = (this->Opcode == "procedures_call");
+
+                /*
+                    next
+                */
+                Result = BlockData.find_field_unordered("next");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                bool IsNull;
+                TachyonAssert(Result.is_null().get(IsNull) == error_code::SUCCESS);
+                if (IsNull == false) {
+                    TachyonAssert(Result.get_string().get(this->NextBlock_Key) == error_code::SUCCESS);
                 }
-                if (BlockData["parent"].is_null() == false) {
-                    this->ParentBlock_Key = std::string(BlockData["parent"]->get_string().value());
+                /*
+                    parent
+                */
+                Result = BlockData.find_field_unordered("parent");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.is_null().get(IsNull) == error_code::SUCCESS);
+                if (IsNull == false) {
+                    TachyonAssert(Result.get_string().get(this->ParentBlock_Key) == error_code::SUCCESS);
                 }
-                /* mutation */
-                auto FindResult = BlockData.find_field("mutation");
-                if (FindResult.error() == error_code::SUCCESS) {
-                    Mutation = this->ParseMutation(BlockData["mutation"]);
+                /*
+                    mutation
+                */
+                Result = BlockData.find_field_unordered("mutation");
+                if (Result.error() == error_code::SUCCESS) {
+                    ondemand::object MutationObject;
+                    TachyonAssert(Result.get_object().get(MutationObject) == error_code::SUCCESS);
+                    Mutation = this->ParseMutation(MutationObject);
                 }
-                /* inputs */
-                try {
-                    ondemand::object InputData = BlockData["inputs"]->get_object().value();
-                    for (ondemand::field InputField : InputData) {
-                        std::string InputKey = std::string(InputField.unescaped_key().value());
-                        this->Inputs.emplace_back(this->ParseInput(InputKey, InputField.value()));
-                    }
-                    if (unlikely(this->Inputs.empty() == false)) {
-                        /* 
-                         * if we sort things out, we could get O(1) access times
-                         * for inputs rather than having scratcheverywhere's string lookup of O(n) 
-                         * */
-                        std::sort(this->Inputs.begin(), this->Inputs.end(), [](const ScratchInput & A, const ScratchInput & B) {
-                            return A.Type < B.Type;
-                        });
-                    }
-                } catch (simdjson_error & Error) {
-                    std::cout << "Inputs: " << BlockData["inputs"] << std::endl;
-                    std::cerr << Error.what() << std::endl;
+                /* 
+                    inputs 
+                */
+                Result = BlockData.find_field_unordered("inputs");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                ondemand::object InputData;
+                TachyonAssert(Result.get_object().get(InputData) == error_code::SUCCESS);
+                for (auto InputField : InputData) {
+                    std::string InputKey;
+                    TachyonAssert(InputField.unescaped_key(InputKey) == error_code::SUCCESS);
+
+                    ondemand::array InputArray;
+                    TachyonAssert(InputField.value().get_array().get(InputArray) == error_code::SUCCESS);
+
+                    this->Inputs.emplace_back(
+                        this->ParseInput(InputKey, InputArray)
+                    );
                 }
-                /* fields */
-                try {
-                    ondemand::object FieldData = BlockData["fields"]->get_object().value();
-                    for (ondemand::field FieldField : FieldData) {
-                        std::string FieldKey = std::string(FieldField.unescaped_key().value());
-                        this->Fields.emplace_back(this->ParseField(FieldKey, FieldField.value()));
-                    }
-                } catch (simdjson_error & Error) {
-                    std::cout << "Fields: " << BlockData["fields"] << std::endl;
-                    std::cerr << Error.what() << std::endl;
+                if (unlikely(this->Inputs.empty() == false)) {
+                    /* sort inputs */
+                    std::sort(this->Inputs.begin(), this->Inputs.end(), [](const ScratchInput & A, const ScratchInput & B) {
+                        return A.Type < B.Type;
+                    });
+                }
+                /*
+                    fields
+                */
+                Result = BlockData.find_field_unordered("fields");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                ondemand::object FieldData;
+                TachyonAssert(Result.get_object().get(FieldData) == error_code::SUCCESS);
+                for (auto FieldField : FieldData) {
+                    std::string FieldKey;
+                    TachyonAssert(FieldField.unescaped_key(FieldKey) == error_code::SUCCESS);
+
+                    ondemand::array FieldArray;
+                    TachyonAssert(FieldField.value().get_array().get(FieldArray) == error_code::SUCCESS);
+
+                    this->Fields.emplace_back(
+                        this->ParseField(FieldKey, FieldArray)
+                    );
                 }
                 /* assign function based on opcode */
                 this->LinkHandlers();
@@ -152,6 +198,22 @@ namespace Scratch {
             }
 
             /**
+             * Checks if the block is a procedure definition.
+             * @return True if it's a procedure definition, false if otherwise.
+             */
+            inline bool IsProcedurePrototype(void) {
+                return this->ProcedurePrototype;
+            }
+
+            /**
+             * Checks if the block is a procedure definition.
+             * @return True if it's a procedure definition, false if otherwise.
+             */
+            inline bool IsProcedureCall(void) {
+                return this->ProcedureCall;
+            }
+
+            /**
              * Checks if the block is an argument reporter.
              * @return True if it's an argument reporter, false if otherwise.
              */
@@ -198,15 +260,7 @@ namespace Scratch {
             ScratchInput __hot GetInput(size_t InputNum);
             ScratchField __hot GetField(size_t FieldNum);
         private:
-            /**
-             * Should only be used for non-reporter blocks.
-             */
-            OpcodeHandler Handler = nullptr;
-
-            /**
-             * Should only be used for reporter blocks.
-             */
-            EvaluationHandler ReporterHandler = nullptr;
+            std::optional<ScratchMutation> Mutation;
 
             /**
              * Links an opcode handler to the current block.
@@ -217,17 +271,30 @@ namespace Scratch {
             ScratchInput ParseInput(std::string & Key, ondemand::array InputObject);
             ScratchField ParseField(std::string & Key, ondemand::array FieldObject);
 
-            std::vector<ScratchInput> Inputs;
-            std::vector<ScratchField> Fields;
             std::string Opcode;
             std::string NextBlock_Key;
             std::string ParentBlock_Key;
             std::string BlockKey;
+
+            std::vector<ScratchInput> Inputs;
+            std::vector<ScratchField> Fields;
             std::reference_wrapper<ScratchSprite> Sprite;
-            std::optional<ScratchMutation> Mutation;
+
+            /**
+             * Should only be used for non-reporter blocks.
+             */
+            OpcodeHandler Handler = nullptr;
+
+            /**
+             * Should only be used for reporter blocks.
+             */
+            EvaluationHandler ReporterHandler = nullptr;
+
             bool Shadow;
             bool TopLevel;
             bool ProcedureDefinition;
+            bool ProcedurePrototype;
+            bool ProcedureCall;
             bool ArgumentReporter;
     };
 };

@@ -8,7 +8,7 @@ using namespace Scratch;
 
 static inline ScratchStatus __hot Data_DeleteAllOfList(ScratchBlock & Block) {
     ScratchField Field = Block.GetField(0);
-    TachyonAssert(Field.Type != ScratchField::FieldType::InvalidField || Field.Type == ScratchField::FieldType::ListField);
+    TachyonAssert(Field.Type == ScratchField::FieldType::ListField);
 
     Field_Variable FieldVar = std::get<Field_Variable>(Field.Field);
     ScratchSprite & Owner = Block.GetOwnerSprite();
@@ -21,7 +21,7 @@ static inline ScratchStatus __hot Data_DeleteAllOfList(ScratchBlock & Block) {
 static inline ScratchStatus __hot Data_AddToList(ScratchBlock & Block) {
     ScratchData Data = Block.GetInputData(0);
     ScratchField Field = Block.GetField(0);
-    TachyonAssert(Field.Type != ScratchField::FieldType::InvalidField || Field.Type == ScratchField::FieldType::ListField);
+    TachyonAssert(Field.Type == ScratchField::FieldType::ListField);
 
     Field_Variable FieldVar = std::get<Field_Variable>(Field.Field);
     ScratchSprite & Owner = Block.GetOwnerSprite();
@@ -31,10 +31,38 @@ static inline ScratchStatus __hot Data_AddToList(ScratchBlock & Block) {
     return ScratchStatus::SCRATCH_NEXT;
 }
 
+static inline ScratchStatus __hot Data_ReplaceItem(ScratchBlock & Block) {
+    ScratchData Index = Block.GetInputData(0);
+    ScratchData Data = Block.GetInputData(1);
+    ScratchField Field = Block.GetField(0);
+
+    TachyonAssert(Field.Type == ScratchField::FieldType::ListField);
+
+    ScratchSprite & Owner = Block.GetOwnerSprite();
+    Field_Variable FieldList = std::get<Field_Variable>(Field.Field);
+
+    ScratchList * List = Owner.GetList(FieldList.VariableKey);
+    TachyonAssert(List != nullptr);
+
+    TachyonAssert(Index.Type != ScratchData::Type::Boolean);
+    if (unlikely(Index.Type == ScratchData::Type::String)) {
+        if (Index.String == "last") {
+            List->Set(Data, List->TotalItems - 1);
+        } else {
+            DebugError("Invalid item replace index string.\n");
+            return ScratchStatus::SCRATCH_END;
+        }
+    }
+
+    List->Set(Data, Index.Number);
+
+    return ScratchStatus::SCRATCH_NEXT;
+}
+
 static inline ScratchStatus __hot Data_SetVariable(ScratchBlock & Block) {
     ScratchField Field = Block.GetField(0);
 
-    TachyonAssert(Field.Type != ScratchField::FieldType::InvalidField || Field.Type == ScratchField::FieldType::VariableField);
+    TachyonAssert(Field.Type == ScratchField::FieldType::VariableField);
 
     Field_Variable FieldVar = std::get<Field_Variable>(Field.Field);
     ScratchSprite & Owner = Block.GetOwnerSprite();
@@ -48,7 +76,7 @@ static inline ScratchStatus __hot Data_SetVariable(ScratchBlock & Block) {
 static inline ScratchStatus __hot Data_ChangeVariableBy(ScratchBlock & Block) {
     ScratchField Field = Block.GetField(0);
 
-    TachyonAssert(Field.Type != ScratchField::FieldType::InvalidField || Field.Type == ScratchField::FieldType::VariableField);
+    TachyonAssert(Field.Type == ScratchField::FieldType::VariableField);
 
     Field_Variable FieldVar = std::get<Field_Variable>(Field.Field);
     ScratchSprite & Owner = Block.GetOwnerSprite();
@@ -67,4 +95,5 @@ void Data::RegisterAll(void) {
     Tachyon::RegisterOpHandler("data_setvariableto", Data_SetVariable);
     Tachyon::RegisterOpHandler("data_addtolist", Data_AddToList);
     Tachyon::RegisterOpHandler("data_changevariableby", Data_ChangeVariableBy);
+    Tachyon::RegisterOpHandler("data_replaceitemoflist", Data_ReplaceItem);
 }

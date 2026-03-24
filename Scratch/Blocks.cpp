@@ -1,13 +1,11 @@
 #include <Tachyon/Debug.hpp>
-#include <Tachyon/Tachyon.hpp>
 #include <Scratch/Data.hpp>
 #include <Scratch/BlockFields.hpp>
 #include <Scratch/Blocks.hpp>
 #include <Scratch/Common.hpp>
 #include <Lib/SIMDJson.h>
 #include <Compiler.hpp>
-#include <iostream>
-#include <variant>
+#include <unordered_set>
 
 using namespace simdjson;
 using namespace Scratch;
@@ -79,35 +77,77 @@ ScratchSprite & __hot ScratchBlock::GetOwnerSprite(void) {
     return this->Sprite.get();
 }
 
+static inline ScratchShadow ParseShadowType(ondemand::array & InputObject) {
+    InputObject.reset();
+
+    simdjson::simdjson_result Result = InputObject.at(0);
+    TachyonAssert(Result.error() == error_code::SUCCESS);
+    uint64_t RawShadow;
+    TachyonAssert(Result.get_uint64().get(RawShadow) == error_code::SUCCESS);
+
+    InputObject.reset();
+    return ScratchShadow(RawShadow);
+}
+
+static inline ScratchPrimitive ParsePrimitiveType(ondemand::array & InputObject) {
+    InputObject.reset();
+
+    simdjson::simdjson_result Result = InputObject.at(0);
+    TachyonAssert(Result.error() == error_code::SUCCESS);
+    uint64_t RawPrimitive;
+    TachyonAssert(Result.get_uint64().get(RawPrimitive) == error_code::SUCCESS);
+
+    InputObject.reset();
+    return ScratchPrimitive(RawPrimitive);
+}
+
 static struct Input_Value SetupInputValue(ondemand::array & RawArray) {
     struct Input_Value Value;
-    RawArray.reset();
-    Value.PrimitiveType = ScratchPrimitive(RawArray.at(0).get_uint64() & 0xFF);
-    RawArray.reset();
+
+    ParsePrimitiveType(RawArray);
+
     /* yes i know the code looks like shit, but it works */
     switch(Value.PrimitiveType) {
         case ScratchPrimitive::INPUT_VAR: {
             Field_Variable Variable;
-            Variable.VariableName = std::string(RawArray.at(1)->get_string().value());
+
+            simdjson::simdjson_result Result = RawArray.at(1);
+            TachyonAssert(Result.error() == error_code::SUCCESS);
+            TachyonAssert(Result.get_string().get(Variable.VariableName) == error_code::SUCCESS);
             RawArray.reset();
-            Variable.VariableKey = std::string(RawArray.at(2)->get_string().value());
+
+            Result = RawArray.at(2);
+            TachyonAssert(Result.error() == error_code::SUCCESS);
+            TachyonAssert(Result.get_string().get(Variable.VariableKey) == error_code::SUCCESS);
             RawArray.reset();
+
             Variable.Type = Field_Variable::VariableType::Regular;
             Value.Value = Variable;
             break;
         }
         case ScratchPrimitive::INPUT_LIST: {
             Field_Variable Variable;
-            Variable.VariableName = std::string(RawArray.at(1)->get_string().value());
+
+            simdjson::simdjson_result Result = RawArray.at(1);
+            TachyonAssert(Result.error() == error_code::SUCCESS);
+            TachyonAssert(Result.get_string().get(Variable.VariableName) == error_code::SUCCESS);
             RawArray.reset();
-            Variable.VariableKey = std::string(RawArray.at(2)->get_string().value());
+
+            Result = RawArray.at(2);
+            TachyonAssert(Result.error() == error_code::SUCCESS);
+            TachyonAssert(Result.get_string().get(Variable.VariableKey) == error_code::SUCCESS);
             RawArray.reset();
+
             Variable.Type = Field_Variable::VariableType::List;
             Value.Value = Variable;
             break;
         }
         default: {
-            Value.Value = SanitizeData(RawArray.at(1));
+            ondemand::value ValueRaw;
+            simdjson::simdjson_result Result = RawArray.at(1);
+            TachyonAssert(Result.error() == error_code::SUCCESS);
+            TachyonAssert(Result.get(ValueRaw) == error_code::SUCCESS);
+            Value.Value = SanitizeData(ValueRaw);
             RawArray.reset();
             break;
         }
@@ -118,169 +158,377 @@ static struct Input_Value SetupInputValue(ondemand::array & RawArray) {
 ScratchMutation ScratchBlock::ParseMutation(ondemand::object MutationObject) {
     ScratchMutation BlockMutation;
     if (this->Opcode == "procedures_prototype" || this->Opcode == "procedures_call") {
-        BlockMutation.ProcCode = std::string(MutationObject["proccode"]->get_string().value());
-        BlockMutation.UseWarp = (MutationObject["warp"]->get_string().value() == "true");
-        padded_string ParamKeysJSON(MutationObject["argumentids"]->get_string().value());
+        /*
+            proccode
+        */
+        simdjson::simdjson_result Result = MutationObject.find_field_unordered("proccode");
+        TachyonAssert(Result.error() == error_code::SUCCESS);
+        TachyonAssert(Result.get_string().get(BlockMutation.ProcCode) == error_code::SUCCESS);
+        /*
+            warp
+        */
+        Result = MutationObject.find_field_unordered("warp");
+        TachyonAssert(Result.error() == error_code::SUCCESS);
+        std::string UseWarpString;
+        TachyonAssert(Result.get_string().get(UseWarpString) == error_code::SUCCESS);
+        BlockMutation.UseWarp = (UseWarpString == "true");
+        /*
+            argumentids
+        */
+        Result = MutationObject.find_field_unordered("argumentids");
+        TachyonAssert(Result.error() == error_code::SUCCESS);
+        std::string ParamKeysString;
+        TachyonAssert(Result.get_string().get(ParamKeysString) == error_code::SUCCESS);
+        padded_string ParamKeysJSON(ParamKeysString);
+
         ondemand::parser KeyParser;
-        ondemand::document ParamKeys = KeyParser.iterate(ParamKeysJSON);
-        for(ondemand::value KeyValue : ParamKeys.get_array()) {
-            std::string Key(KeyValue.get_string().value());
-            BlockMutation.ParametersKeys.push_back(Key);
+        auto ParamKeys = KeyParser.iterate(ParamKeysJSON);
+        for(auto KeyValue : ParamKeys.get_array()) {
+            std::string Key;
+            TachyonAssert(KeyValue.get_string().get(Key) == error_code::SUCCESS);
+
+            BlockMutation.ParametersKeys.push_back(
+                Key
+            );
         }
         if (this->Opcode == "procedures_prototype") {
             /* has extras */
             ondemand::parser NameParser;
             ondemand::parser DefaultsParser;
-            padded_string ParamNamesJSON(MutationObject["argumentnames"]->get_string().value());
-            padded_string ParamDefaultsJSON(MutationObject["argumentdefaults"]->get_string().value());
-            ondemand::document ParamNames = NameParser.iterate(ParamNamesJSON);
-            ondemand::document ParamDefaults = DefaultsParser.iterate(ParamDefaultsJSON);
-            for(ondemand::value NameValue : ParamNames.get_array()) {
-                std::string Name(NameValue.get_string().value());
-                BlockMutation.ParametersNames.push_back(Name);
+            /*
+                argumentnames
+            */
+            Result = MutationObject.find_field_unordered("argumentnames");
+            TachyonAssert(Result.error() == error_code::SUCCESS);
+            std::string ParamNamesString;
+            TachyonAssert(Result.get_string().get(ParamNamesString) == error_code::SUCCESS);
+            padded_string ParamNamesJSON(ParamNamesString);
+            auto ParamNames = NameParser.iterate(ParamNamesJSON);
+            for(auto NameValue : ParamNames.get_array()) {
+                std::string Name;
+                TachyonAssert(NameValue.get_string().get(Name) == error_code::SUCCESS);
+
+                BlockMutation.ParametersNames.push_back(
+                    Name
+                );
             }
-            for(ondemand::value DefaultValue : ParamDefaults.get_array()) {
-                BlockMutation.ParameterDefaults.push_back(SanitizeData(DefaultValue));
+            /*
+                argumentdefaults
+            */
+            Result = MutationObject.find_field_unordered("argumentdefaults");
+            TachyonAssert(Result.error() == error_code::SUCCESS);
+            std::string ParamDefaultsString;
+            TachyonAssert(Result.get_string().get(ParamDefaultsString) == error_code::SUCCESS);
+            padded_string ParamDefaultsJSON(ParamDefaultsString);
+            auto ParamDefaults = DefaultsParser.iterate(ParamDefaultsJSON);
+            for(auto DefaultValueField : ParamDefaults.get_array()) {
+                ondemand::value DefaultValue;
+                TachyonAssert(DefaultValueField.get(DefaultValue) == error_code::SUCCESS);
+                BlockMutation.ParameterDefaults.push_back(
+                    SanitizeData(DefaultValue)
+                );
             }
         }
     } else {
-        BlockMutation.HasNext = (MutationObject["hasnext"]->get_string().value() == "true");
+        simdjson::simdjson_result Result = MutationObject.find_field_unordered("hasnext");
+        TachyonAssert(Result.error() == error_code::SUCCESS);
+        std::string HasNextString;
+        TachyonAssert(Result.get_string().get(HasNextString) == error_code::SUCCESS);
+        BlockMutation.HasNext = (HasNextString == "true");
     }
     return BlockMutation;
 }
 
+static inline ScratchInput::InputType GetInputType(std::string & Key) {
+    /* these all belong to the same type (ScratchInput::InputType::ValueInput) */
+    std::unordered_set<std::string> ValueKeys = {
+        "VALUE", "MESSAGE", "STRING1", "STRING2",
+        "OPERAND1", "OPERAND2", "ITEM", "INDEX",
+        "TIMES", "NUM1", "NUM2", "STRING",
+        "NUM", "LETTER", "OPERAND", "DURATION",
+        "COSTUME", "SIZE", "X", "Y",
+        "DIRECTION", "STEPS", "DEGREES", "TO",
+
+    };
+    if (ValueKeys.count(Key) > 0) return ScratchInput::InputType::ValueInput;
+    if (Key == "CONDITION") return ScratchInput::InputType::ConditionInput;
+    if (Key == "SUBSTACK" || Key == "SUBSTACK2") return ScratchInput::InputType::SubstackInput;
+    if (Key == "BROADCAST_INPUT") return ScratchInput::InputType::BroadcastInput;
+    if (Key == "custom_block") return ScratchInput::InputType::ProcedureDefinition;
+    /* bad input */
+    return ScratchInput::InputType::InvalidInput;
+}
+
+static inline ScratchField::FieldType GetFieldType(std::string & Key) {
+    /* these all belong to the same type (ScratchField::FieldType::StringField) */
+    std::unordered_set<std::string> ValueKeys = {
+        "OPERATOR", "VALUE", "STOP_OPTION", "CURRENTMENU",
+        "COSTUME", "TO",
+    };
+    if (ValueKeys.count(Key) > 0) return ScratchField::FieldType::StringField;
+    if (Key == "LIST") return ScratchField::FieldType::ListField;
+    if (Key == "VARIABLE") return ScratchField::FieldType::VariableField;
+    if (Key == "BROADCAST_OPTION") return ScratchField::FieldType::BroadcastOption;
+    /* bad input */
+    return ScratchField::FieldType::InvalidField;
+}
+
+static inline void ParseValueInput(ScratchInput & Input, ondemand::array & InputObject) {
+    Input_Value Value;
+    switch(Input.ShadowType) {
+        case ScratchShadow::INPUT_SAME_BLOCK_SHADOW: {
+            InputObject.reset();
+
+            simdjson::simdjson_result Result = InputObject.at(1);
+            TachyonAssert(Result.error() == error_code::SUCCESS);
+
+            bool IsString;
+            TachyonAssert(Result.is_string().get(IsString) == error_code::SUCCESS);
+
+            ondemand::array ValueArray;
+
+            if (IsString) {
+                std::string ReporterKeyString;
+
+                TachyonAssert(Result.get_string().get(ReporterKeyString) == error_code::SUCCESS);
+
+                InputObject.reset();
+
+                Input.ReporterKey = ReporterKeyString;
+                Input.Input = ReporterKeyString;
+                Input.HasReporter = true;
+
+                InputObject.reset();
+                break;
+            }
+
+            TachyonAssert(Result.get_array().get(ValueArray) == error_code::SUCCESS);
+
+            InputObject.reset();
+            /* these usually dont have reporters */
+            Input.Input = SetupInputValue(ValueArray);
+            Input.HasReporter = false;
+
+            InputObject.reset();
+            break;
+        }
+        case ScratchShadow::INPUT_BLOCK_NO_SHADOW: {
+            simdjson::simdjson_result Result = InputObject.at(1);
+            TachyonAssert(Result.error() == error_code::SUCCESS);
+            
+            Input.HasReporter = true;
+
+            std::string ReporterId;
+
+            TachyonAssert(Result.get_string().get(ReporterId) == error_code::SUCCESS);
+            
+            Input.Input = ReporterId;
+            Input.ReporterKey = ReporterId;
+            break;
+        }
+        case ScratchShadow::INPUT_DIFF_BLOCK_SHADOW: {
+            ondemand::array ValueArray;
+
+            InputObject.reset();
+
+            simdjson::simdjson_result Result = InputObject.at(1);
+            TachyonAssert(Result.error() == error_code::SUCCESS);
+
+            bool IsString;
+            TachyonAssert(Result.is_string().get(IsString) == error_code::SUCCESS);
+
+            if (IsString) {
+                /* the typical block chain */
+                std::string ReporterKeyString;
+
+                TachyonAssert(Result.get_string().get(ReporterKeyString) == error_code::SUCCESS);
+
+                InputObject.reset();
+
+                Result = InputObject.at(2);
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.get_array().get(ValueArray) == error_code::SUCCESS);
+                InputObject.reset();
+
+                /* these always have a reporter */
+                Input.ReporterKey = ReporterKeyString;
+                Input.Input = SetupInputValue(ValueArray);
+                Input.HasReporter = true;
+
+                InputObject.reset();
+                break;
+            }
+            /* variable, list, or broadcast */
+            TachyonAssert(Result.get_array().get(ValueArray) == error_code::SUCCESS);
+            Input.Input = SetupInputValue(ValueArray);
+            Input.HasReporter = false;
+
+            InputObject.reset();
+            break;
+        }
+    }
+}
+
+static inline void ParseNoShadow(ScratchInput & Input, ondemand::array & InputObject) {
+    InputObject.reset();
+    TachyonAssert(Input.ShadowType == ScratchShadow::INPUT_BLOCK_NO_SHADOW);
+
+    simdjson::simdjson_result Result = InputObject.at(1);
+    TachyonAssert(Result.error() == error_code::SUCCESS);
+
+    bool IsNull;
+    TachyonAssert(Result.is_null().get(IsNull) == error_code::SUCCESS);
+
+    Input.HasReporter = false;
+    if (IsNull == true) {
+        /* empty */
+        Input.Input = {};
+        return;
+    }
+
+    std::string String;
+    TachyonAssert(Result.get_string().get(String) == error_code::SUCCESS);
+    Input.Input = String;
+
+    InputObject.reset();
+}
+
+static inline void ParseProcedureDefinition(ScratchInput & Input, ondemand::array & InputObject) {
+    InputObject.reset();
+
+    simdjson::simdjson_result Result = InputObject.at(1);
+
+    TachyonAssert(Result.error() == error_code::SUCCESS);
+    std::string ProcDefString;
+    TachyonAssert(Result.get_string().get(ProcDefString) == error_code::SUCCESS);
+
+    Input.Input = ProcDefString;
+    Input.HasReporter = false;
+
+    InputObject.reset();
+}
+
+static inline void ParseBroadcastInput(ScratchInput & Input, ondemand::array & InputObject) {
+    InputObject.reset();
+
+    simdjson::simdjson_result Result = InputObject.at(1);
+
+    TachyonAssert(Result.error() == error_code::SUCCESS);
+    ondemand::array ValueArray;
+    TachyonAssert(Result.get_array().get(ValueArray) == error_code::SUCCESS);
+    
+    Result = ValueArray.at(2);
+    std::string BroadcastKey;
+    TachyonAssert(Result.get_string().get(BroadcastKey) == error_code::SUCCESS);
+
+    Input.Input = BroadcastKey;
+
+    InputObject.reset();
+}
+
 ScratchInput ScratchBlock::ParseInput(std::string & Key, ondemand::array InputObject) {
     ScratchInput Input;
-    Input.ShadowType = ScratchShadow(InputObject.at(0)->get_uint64() & 0xFF);
-    InputObject.reset();
-    Input.Type = ScratchInput::InputType::InvalidInput;
-    if (Key == "VALUE" || Key == "MESSAGE" || Key == "STRING1"
-        || Key == "STRING1" || Key == "STRING2" || Key == "OPERAND1"
-        || Key == "OPERAND2" || Key == "ITEM" || Key == "INDEX"
-        || Key == "TIMES" || Key == "NUM1" || Key == "NUM2"
-        || Key == "STRING" || Key == "NUM" || Key == "LETTER") {
-        Input.Type = ScratchInput::InputType::ValueInput;
-        /* setup value input */
-        struct Input_Value Value;
-        switch(Input.ShadowType) {
-            case ScratchShadow::INPUT_SAME_BLOCK_SHADOW: {
-                ondemand::array ValueArray = InputObject.at(1).get_array().value();
-                InputObject.reset();
-                /* these usually dont have reporters */
-                Input.Input = SetupInputValue(ValueArray);
-                InputObject.reset();
-                Input.HasReporter = false;
-                break;
+    Input.ShadowType = ParseShadowType(InputObject);
+    Input.Type = GetInputType(Key);
+    switch(Input.Type) {
+        case ScratchInput::InputType::ValueInput: {
+            ParseValueInput(Input, InputObject);
+            break;
+        }
+        case ScratchInput::InputType::ConditionInput:
+        case ScratchInput::InputType::SubstackInput: {
+            ParseNoShadow(Input, InputObject);
+            break;
+        }
+        case ScratchInput::InputType::BroadcastInput: {
+            ParseBroadcastInput(Input, InputObject);
+            break;
+        }
+        case ScratchInput::InputType::ProcedureDefinition: {
+            ParseProcedureDefinition(Input, InputObject);
+            break;
+        }
+        case ScratchInput::InputType::InvalidInput: {
+            if (this->IsProcedurePrototype() == false && this->IsProcedureCall() == false) {
+                TachyonUnimplemented("Unknown input. Input: %u, Key: %s\n", Input.Type, Key.c_str());
             }
-            case ScratchShadow::INPUT_DIFF_BLOCK_SHADOW: {
-                ondemand::array ValueArray;
-                if (InputObject.at(1).is_string() == true) {
-                    /* the typical block chain */
-                    InputObject.reset();
-                    std::string ReporterKeyString(InputObject.at(1)->get_string().value());
-                    InputObject.reset();
-                    ValueArray = InputObject.at(2).get_array().value();
-                    InputObject.reset();
-                    Input.ReporterKey = ReporterKeyString;
-                    /* always has a reporter */
-                    Input.Input = SetupInputValue(ValueArray);
-                    InputObject.reset();
-                    Input.HasReporter = true;
-                } else {
-                    /* variable, list, or broadcast */
-                    InputObject.reset();
-                    ValueArray = InputObject.at(1)->get_array().value();
-                    InputObject.reset();
-                    Input.Input = SetupInputValue(ValueArray);
-                    InputObject.reset();
-                    Input.HasReporter = false;
-                }
-                break;
-            }
-            default: {
-                std::cerr << "Invalid shadow type" << std::endl;
-                return Input;
-            }
-        }
-    } else if (Key == "CONDITION") {
-        Input.Type = ScratchInput::InputType::ConditionInput;
-        if (InputObject.at(1)->is_null() == true) {
-            InputObject.reset();
-            Input.Input = std::string();
-        } else {
-            InputObject.reset();
-            Input.Input = std::string(InputObject.at(1)->get_string().value());
-        }
-    } else if (Key == "SUBSTACK" || Key == "SUBSTACK2") {
-        Input.Type = ScratchInput::InputType::SubstackInput;
-        if (InputObject.at(1)->is_null() == true) {
-            InputObject.reset();
-            Input.Input = std::string();
-        } else {
-            InputObject.reset();
-            Input.Input = std::string(InputObject.at(1)->get_string().value());
-        }
-    } else if (Key == "OPERAND") {
-        Input.Type = ScratchInput::InputType::BooleanInput;
-        if (InputObject.at(1)->is_null() == true) {
-            Input.Input = std::string();
-        } else {
-            InputObject.reset();
-            Input.Input = std::string(InputObject.at(1)->get_string().value());
-        }
-        return Input;
-    } else if (Key == "BROADCAST_INPUT") {
-        Input.Type = ScratchInput::InputType::BroadcastInput;
-        ondemand::array ValueArray = InputObject.at(1)->get_array().value();
-        Input.Input = std::string(ValueArray.at(2)->get_string().value());
-        return Input;
-    } else {
-        if (this->IsProcedureDef() == true) {
-            Input.Type = ScratchInput::InputType::ProcedureDefinition;
-            Input.HasReporter = false;
-            Input.Input = std::string(InputObject.at(1)->get_string().value());
-        } else {
-            DebugWarn("Unknown/unhandled input key \"%s\". Input will be returned as empty.\n", Key.c_str());
+            Input.Type = ScratchInput::InputType::ValueInput;
+            ParseValueInput(Input, InputObject);
+            break;
         }
     }
     return Input;
 }
 
+static inline void ParseBroadcastField(ScratchField & Field, ondemand::array & FieldObject) {
+    FieldObject.reset();
+
+    simdjson::simdjson_result Result = FieldObject.at(1);
+    TachyonAssert(Result.error() == error_code::SUCCESS);
+
+    std::string BroadcastOption;
+    TachyonAssert(Result.get_string().get(BroadcastOption) == error_code::SUCCESS);
+
+    Field.Field = BroadcastOption;
+
+    FieldObject.reset();
+}
+
+static inline void ParseStringOption(ScratchField & Field, ondemand::array & FieldObject) {
+    FieldObject.reset();
+
+    simdjson::simdjson_result Result = FieldObject.at(0);
+    TachyonAssert(Result.error() == error_code::SUCCESS);
+
+    std::string StringOption;
+    TachyonAssert(Result.get_string().get(StringOption) == error_code::SUCCESS);
+
+    Field.Field = StringOption;
+
+    FieldObject.reset();
+}
+
+static inline void ParseDataField(ScratchField & Field, ondemand::array & FieldObject, ScratchBlock & Block) {
+    simdjson::simdjson_result Result = FieldObject.at(0);
+    TachyonAssert(Result.error() == error_code::SUCCESS);
+
+    std::string VariableName;
+    TachyonAssert(Result.get_string().get(VariableName) == error_code::SUCCESS);
+    FieldObject.reset();
+
+    Result = FieldObject.at(1);
+    std::string VariableKey;
+    TachyonAssert(Result.get_string().get(VariableKey) == error_code::SUCCESS);
+    FieldObject.reset();
+
+    ScratchSprite & Owner = Block.GetOwnerSprite();
+    Field_Variable VariableField;
+
+    VariableField.VariableKey = VariableKey;
+    VariableField.VariableName = VariableName;
+    Field.Field = VariableField;
+}
 
 ScratchField ScratchBlock::ParseField(std::string & Key, ondemand::array FieldObject) {
     ScratchField Field;
-    Field.Type = ScratchField::FieldType::InvalidField;
-    if (Key == "LIST" || Key == "VARIABLE") {
-        std::string VariableName(FieldObject.at(0)->get_string().value());
-        FieldObject.reset();
-        std::string VariableKey(FieldObject.at(1).get_string().value());
-        FieldObject.reset();
-
-        ScratchSprite & Owner = this->GetOwnerSprite();
-        Field_Variable VariableField;
-
-        Field.Type = (Key == "LIST") ? ScratchField::FieldType::ListField : ScratchField::FieldType::VariableField;
-        VariableField.VariableKey = VariableKey;
-        VariableField.VariableName = VariableName;
-        Field.Field = VariableField;
-    } else if (Key == "VALUE") {
-        std::string Value(FieldObject.at(0)->get_string().value());
-        FieldObject.reset();
-
-        Field.Type = ScratchField::FieldType::ValueField;
-        Field.Field = Value;
-    } else if (Key == "STOP_OPTION") {
-        std::string StopOption(FieldObject.at(0)->get_string().value());
-        FieldObject.reset();
-
-        Field.Type = ScratchField::FieldType::StopOption;
-        Field.Field = StopOption;
-    } else if (Key == "BROADCAST_OPTION") {
-        std::string BroadcastOption(FieldObject.at(1).get_string().value());
-        FieldObject.reset();
-
-        Field.Type = ScratchField::FieldType::BroadcastField;
-        Field.Field = BroadcastOption;
+    Field.Type = GetFieldType(Key);
+    switch(Field.Type) {
+        case ScratchField::FieldType::ListField:
+        case ScratchField::FieldType::VariableField: {
+            ParseDataField(Field, FieldObject, *this);
+            break;
+        }
+        case ScratchField::FieldType::StringField: {
+            ParseStringOption(Field, FieldObject);
+            break;
+        }
+        case ScratchField::FieldType::BroadcastOption: {
+            ParseBroadcastField(Field, FieldObject);
+            break;
+        }
+        case ScratchField::FieldType::InvalidField: {
+            TachyonUnimplemented("Unknown field. Field: %u, Key: %s\n", Field.Type, Key.c_str());
+        }
     }
     return Field;
 }

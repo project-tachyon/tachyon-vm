@@ -5,6 +5,8 @@
 #include <Scratch/Operator.hpp>
 #include <Tachyon/Tachyon.hpp>
 #include <Compiler.hpp>
+#include <cmath>
+#include <limits>
 
 using namespace Scratch;
 
@@ -14,7 +16,60 @@ static inline __hot ScratchData Operator_Add(ScratchBlock & Block) {
 
     double Result = (Operand1_Data.Type == ScratchData::Type::Number ? Operand1_Data.Number : 0) + (Operand2_Data.Type == ScratchData::Type::Number ? Operand2_Data.Number : 0);
 
-    return ScratchData(Result);
+    return Result;
+}
+
+static inline __hot ScratchData Operator_Modulo(ScratchBlock & Block) {
+    ScratchData Operand1_Data = Block.GetInputData(0);
+    ScratchData Operand2_Data = Block.GetInputData(1);
+
+    double Result = std::fmod(
+        (Operand1_Data.Type == ScratchData::Type::Number ? Operand1_Data.Number : 0),
+        (Operand2_Data.Type == ScratchData::Type::Number ? Operand2_Data.Number : 0)
+    );
+
+    return Result;
+}
+
+static inline Operator::MathOperation __hot GetMathOperation(ScratchField & Field) {
+    std::string Operation = std::get<std::string>(Field.Field);
+
+    if (Operation == "floor") return Operator::MathOperation::MathFloor;
+
+    return Operator::MathOperation::MathInvalid;
+} 
+
+static inline __hot ScratchData Operator_MathOp(ScratchBlock & Block) {
+    ScratchField Field = Block.GetField(0);
+
+    TachyonAssert(Field.Type == ScratchField::FieldType::StringField);
+
+    Operator::MathOperation Type = GetMathOperation(Field);
+
+    switch(Type) {
+        case Operator::MathOperation::MathFloor: {
+            ScratchData Data = Block.GetInputData(0);
+            if (Data.Type != ScratchData::Type::Number) {
+                return double(0);
+            }
+            return std::floor(Data.Number);
+        }
+        case Operator::MathOperation::MathInvalid: {
+            TachyonUnimplemented("Unknown math operation: %s\n", std::get<std::string>(Field.Field).c_str());
+        }
+    }
+    __unreachable;
+}
+
+static inline __hot ScratchData Operator_Divide(ScratchBlock & Block) {
+    ScratchData Num1 = Block.GetInputData(0);
+    ScratchData Num2 = Block.GetInputData(1);
+
+    if (Num2.Type != ScratchData::Type::Number) {
+        return std::numeric_limits<double>::infinity();
+    }
+    double Result = (Num1.Type == ScratchData::Type::Number ? Num1.Number : 0) / Num2.Number;
+    return Result;
 }
 
 static inline __hot ScratchData Operator_Join(ScratchBlock & Block) {
@@ -24,7 +79,7 @@ static inline __hot ScratchData Operator_Join(ScratchBlock & Block) {
     std::string String1 = Data2String(Data1);
     std::string String2 = Data2String(Data2);
 
-    return ScratchData(String1 + String2);
+    return String1 + String2;
 }
 
 static inline __hot ScratchData Operator_Equals(ScratchBlock & Block) {
@@ -39,7 +94,7 @@ static inline __hot ScratchData Operator_Equals(ScratchBlock & Block) {
 
 static inline __hot ScratchData Operator_Not(ScratchBlock & Block) {
     ScratchInput Condition = Block.GetInput(0);
-    if (unlikely(Condition.Type != ScratchInput::InputType::BooleanInput)) {
+    if (unlikely(Condition.Type != ScratchInput::InputType::ValueInput)) {
         DebugError("Invalid input for not operator!\n");
         return false;
     }
@@ -109,4 +164,7 @@ void Operator::RegisterAll(void) {
     Tachyon::RegisterEvaluationHandler("operator_not", Operator_Not);
     Tachyon::RegisterEvaluationHandler("operator_length", Operator_Length);
     Tachyon::RegisterEvaluationHandler("operator_letter_of", Operator_LetterOf);
+    Tachyon::RegisterEvaluationHandler("operator_mod", Operator_Modulo);
+    Tachyon::RegisterEvaluationHandler("operator_mathop", Operator_MathOp);
+    Tachyon::RegisterEvaluationHandler("operator_divide", Operator_Divide);
 }

@@ -1,9 +1,11 @@
+#include "Scratch/BlockFields.hpp"
 #include <Tachyon/Debug.hpp>
 #include <Scratch/Procedures.hpp>
 #include <Scratch/Blocks.hpp>
 #include <Scratch/Common.hpp>
 #include <Scratch/Data.hpp>
 #include <Tachyon/Tachyon.hpp>
+#include <unordered_map>
 
 using namespace Scratch;
 
@@ -12,20 +14,21 @@ void ScratchSprite::ResolveProcedureDefinitions(void) {
     for(auto & Item : this->ProcedureDefinitions) {
         auto & ProcDef = Item.second;
         ScratchInput Input = ProcDef->GetInput(0);
-        if (Input.Type == ScratchInput::InputType::InvalidInput || Input.Type != ScratchInput::InputType::ProcedureDefinition) {
-            std::cerr << "Invalid procedure definition" << std::endl;
-            continue;
-        }
+
+        TachyonAssert(Input.Type == ScratchInput::InputType::ProcedureDefinition);
+
         struct ScratchProcedure Procedure;
         Procedure.DefinitionKey = ProcDef->GetKey();
         Procedure.PrototypeKey = std::get<std::string>(Input.Input);
+
         ScratchBlock * Prototype = this->GetBlockFromId(Procedure.PrototypeKey);
-        /* we read from the prototype mutation from here */
         ScratchMutation Mutation = Prototype->GetMutation();
+
         Procedure.UseWarp = Mutation.UseWarp;
         Procedure.ProcCode = Mutation.ProcCode;
         Procedure.ParametersNames = Mutation.ParametersNames;
         Procedure.ParametersKeys = Mutation.ParametersKeys;
+
         this->Procedures.emplace_back(Procedure);
     }
 }
@@ -48,12 +51,28 @@ static inline ScratchStatus __hot Procedures_Call(ScratchBlock & Block) {
             }
             ScratchBlock * ProcBlock = Owner.GetBlockFromId(Procedure.DefinitionKey);
             TachyonAssert(ProcBlock != nullptr);
+
+            /* bind parameters */
+            size_t TotalParams = Procedure.ParametersNames.size();
+            std::unordered_map<std::string, ScratchData> ParamBindings;
+            ParamBindings.reserve(TotalParams);
+
+            for(size_t i = 0; i < TotalParams; i++) {
+                std::string & ParamName = Procedure.ParametersNames[i];
+                ScratchData Data = Block.GetInputData(i);
+                /* off you go little one */
+                ParamBindings[ParamName] = std::move(Data);
+            }
+
             CurrentScript->ReturnStack.push_back({
                 .ReturnId = Block.GetNextKey(),
                 .RepeatId = std::string(),
-                .RepeatsLeft = -1,
+                .RepeatCondition = double(-1),
                 .InsideProcedure = GetControlFlag(*CurrentScript, SCRIPT_INSIDE_PROCEDURE) 
             });
+
+            CurrentScript->ParamBindings.push_back(ParamBindings);
+
             SetControlFlag(*CurrentScript, (SCRIPT_SHOULD_STAY | SCRIPT_INSIDE_PROCEDURE | SCRIPT_INVALIDATE_BLOCK));
             CurrentScript->CurrentBlockId = ProcBlock->GetNextKey();
             return ScratchStatus::SCRATCH_NEXT;

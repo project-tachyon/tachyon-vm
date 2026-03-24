@@ -51,7 +51,6 @@ int Tachyon::Init(void) {
     return 0;
 }
 
-
 Tachyon::VirtualMachine * Tachyon::GetVM(void) {
     return &VM;
 }
@@ -103,8 +102,4 @@ void Tachyon::Quit(void) {
     if (VM.TachyonRenderer)
         SDL_DestroyRenderer(VM.TachyonRenderer);
     SDL_Quit();
-}
-
-void Tachyon::Exit() {
-
 }

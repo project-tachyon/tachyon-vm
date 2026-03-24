@@ -42,7 +42,7 @@ namespace Scratch {
      */
     struct ScratchField {
         std::variant<Field_Variable, std::string> Field;
-        enum class FieldType : uint8_t { VariableField, ListField, BroadcastField, StopOption, ValueField, InvalidField } Type;
+        enum class FieldType : uint8_t { VariableField, ListField, StringField, BroadcastOption, InvalidField } Type;
     };
 
     /*
@@ -64,7 +64,7 @@ namespace Scratch {
     struct ScratchInput {
         std::variant<Input_Value, std::string> Input;
         std::string ReporterKey;
-        enum class InputType : uint8_t { ConditionInput, SubstackInput, ProcedureDefinition, ValueInput, BooleanInput, BroadcastInput, InvalidInput } Type;
+        enum class InputType : uint8_t { ConditionInput, SubstackInput, ProcedureDefinition, ValueInput, BroadcastInput, InvalidInput } Type;
         ScratchShadow ShadowType;
         bool HasReporter;
     };

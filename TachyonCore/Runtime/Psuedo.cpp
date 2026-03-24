@@ -1,4 +1,4 @@
-#include "Scratch/Data.hpp"
+#include <Scratch/Data.hpp>
 #include <Scratch/Blocks.hpp>
 #include <Tachyon/Tachyon.hpp>
 #include <Tachyon/Debug.hpp>
@@ -15,19 +15,17 @@ bool Psuedo::IsPsuedo(std::string ProcCode) {
     return (PsuedoHandlers.find(ProcCode) != PsuedoHandlers.end());
 }
 
-
 static inline ScratchStatus __hot Tachyon_LoadU8Buffer(ScratchBlock & Block) {
     /* unimplemented for now */
-    DebugInfo("Loading byte buffer...\n");
+    DebugInfo("Byte buffer loading is not yet implemented. Let's continue...\n");
     return ScratchStatus::SCRATCH_NEXT;
 }
 
-/* TODO: add ^ operator overload */
-// static inline ScratchData __hot Tachyon_XOR(ScratchBlock & Block) {
-//     ScratchData Operand1 = Block.GetInputData(0);
-//     ScratchData Operand2 = Block.GetInputData(1);
-//     return (Operand1 ^ Operand2);
-// }
+static inline ScratchStatus __hot Tachyon_Log(ScratchBlock & Block) {
+    ScratchData String = Block.GetInputData(0);
+    std::cout << String << std::endl;
+    return ScratchStatus::SCRATCH_NEXT;
+}
 
 ScratchStatus __hot Psuedo::Execute(std::string ProcCode, Scratch::ScratchBlock & Block) {
     TachyonAssert(Psuedo::IsPsuedo(ProcCode) == true);
@@ -42,4 +40,5 @@ static inline void RegisterPsuedoHandler(std::string_view ProcCode, OpcodeHandle
 
 void Psuedo::RegisterAll(void) {
     RegisterPsuedoHandler("Tachyon: Load large UINT8 buffer %s", Tachyon_LoadU8Buffer);
+    RegisterPsuedoHandler("Tachyon: Log %s", Tachyon_Log);
 }

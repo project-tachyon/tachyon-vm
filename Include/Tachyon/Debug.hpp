@@ -9,7 +9,11 @@
 #define DebugError(...) Debug::Report("ERROR: " __VA_ARGS__)
 
 #define TachyonAssert(Condition) \
-    do { if (unlikely((Condition) == false)) { DebugError("Tachyon assertion failed at (%s:%d): %s\n", __FILE__, __LINE__, #Condition); Tachyon::Exit(); } } while(false)
+    do { if (unlikely((Condition) == false)) { DebugError("Tachyon assertion failed at (%s:%d): %s\n", __FILE__, __LINE__, #Condition); std::terminate(); } } while(false)
+
+#define TachyonUnimplemented(...) \
+    do { DebugError("Tachyon Unimplemented: " __VA_ARGS__); std::terminate(); } while(false)
+
 
 namespace Debug {
     void Report(const char * Message, ...);

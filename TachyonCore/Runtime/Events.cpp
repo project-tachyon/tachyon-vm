@@ -25,7 +25,7 @@ static ScratchStatus EventBroadcastAsync(ScratchBlock & Block) {
         for(const auto & Broadcast : Sprite->BroadcastReceivers) {
             ScratchBlock BroadcastBlock = *Broadcast.second;
             ScratchField Field = BroadcastBlock.GetField(0);
-            if (Field.Type != ScratchField::FieldType::BroadcastField) {
+            if (Field.Type != ScratchField::FieldType::BroadcastOption) {
                 continue;
             }
             const std::string BroadcastFieldKey = std::get<std::string>(Field.Field);

@@ -5,15 +5,20 @@
 #include <Tachyon/Tachyon.hpp>
 #include <Tachyon/Debug.hpp>
 #include <string_view>
+#include <variant>
 #include <vector>
 #include <deque>
 
 using namespace Scratch;
 
 /**
- * A queue.
+ * A queue containing runnable threads/scripts.
  */
 static std::deque<ScratchScript> SchedulerRunQueue;
+
+/**
+ * A queue containing blocked threads/scripts.
+ */
 static std::deque<ScratchScript> SchedulerYieldQueue;
 
 static ScratchScript * CurrentScript = nullptr;
@@ -87,6 +92,7 @@ void Tachyon::ScriptAddReadyQueue(ScratchScript Script) {
  * This is where scripts are executed if you couldn't already tell.
  * You damn retard.
  * @param The script to execute
+ * @return Status of the script
  */
 static inline ScratchStatus __hot ExecuteScript(ScratchScript & Script) {
     while(true) {
@@ -108,6 +114,7 @@ static inline ScratchStatus __hot ExecuteScript(ScratchScript & Script) {
                 if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == true) {
                     /* get out */
                     ScriptReturn(Script);
+                    UnbindParameters(Script);
                     continue;
                 }
             }
@@ -129,28 +136,53 @@ static inline ScratchStatus __hot ExecuteScript(ScratchScript & Script) {
         }
         Script_StackFrame & CurrentStackFrame = Script.ReturnStack.back();
         /* its possible we're just an ending procedure */
-        if (CurrentStackFrame.RepeatsLeft < 0) {
-            if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == false) {
-                return ScratchStatus::SCRATCH_END;
-            }
-            UnsetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE);
-            ScriptReturn(Script);
-            continue;
-        }
-        /* repeats should only be below here */
-        CurrentStackFrame.RepeatsLeft--;
-        if (CurrentStackFrame.RepeatsLeft < 0) {
-            ScriptReturn(Script);
-            if (Script.CurrentBlockId.empty() == true) {
+        if (std::holds_alternative<double>(CurrentStackFrame.RepeatCondition) == true) {
+            double & RepeatsLeft = std::get<double>(CurrentStackFrame.RepeatCondition);
+            if (RepeatsLeft < 0) {
                 if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == false) {
                     return ScratchStatus::SCRATCH_END;
                 }
                 UnsetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE);
+
                 ScriptReturn(Script);
+                UnbindParameters(Script);
+                continue;
             }
-            continue;
+            /* repeats should only be below here */
+            RepeatsLeft--;
+            if (RepeatsLeft < 0) {
+                ScriptReturn(Script);
+                if (Script.CurrentBlockId.empty() == true) {
+                    if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == false) {
+                        return ScratchStatus::SCRATCH_END;
+                    }
+                    UnsetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE);
+                    
+                    ScriptReturn(Script);
+                    UnbindParameters(Script);
+                }
+                continue;
+            }
+            Script.CurrentBlockId = CurrentStackFrame.RepeatId;
+        } else {
+            ScratchBlock * ConditionalBlock = std::get<ScratchBlock *>(CurrentStackFrame.RepeatCondition);
+            TachyonAssert(ConditionalBlock != nullptr);
+            ScratchData EvalResult = ConditionalBlock->Evaluate();
+            TachyonAssert(EvalResult.Type == ScratchData::Type::Boolean);
+            if (EvalResult.Boolean == true) {
+                Script.CurrentBlockId = CurrentStackFrame.RepeatId;
+            } else {
+                ScriptReturn(Script);
+                if (Script.CurrentBlockId.empty() == true) {
+                    if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == false) {
+                        return ScratchStatus::SCRATCH_END;
+                    }
+                    UnsetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE);
+                    ScriptReturn(Script);
+                }
+                continue;
+            }
         }
-        Script.CurrentBlockId = CurrentStackFrame.RepeatId;
     }
     __unreachable;
 }
@@ -167,7 +199,17 @@ static inline void DumpScriptInformation(ScratchScript & Script) {
         DebugInfo("\tWas in procedure? %s\n", StackFrame.InsideProcedure ? "true" : "false");
         if (StackFrame.RepeatId.empty() == false) {
             DebugInfo("\tRepeat start block ID: %s\n", StackFrame.RepeatId.c_str());
-            DebugInfo("\tTotal repeats left: %d\n", StackFrame.RepeatsLeft + 1);
+
+            if (std::holds_alternative<double>(StackFrame.RepeatCondition) == true) {
+                /* repeat times */
+                const double RepeatsLeft = std::get<double>(StackFrame.RepeatCondition);
+                DebugInfo("\tTotal repeats left: %d\n", RepeatsLeft + 1);
+            } else {
+                /* repeat condition */
+                ScratchBlock * ConditionBlock = std::get<ScratchBlock *>(StackFrame.RepeatCondition);
+                TachyonAssert(ConditionBlock != nullptr);
+                DebugInfo("\tRepeat condition block ID: %s\n", ConditionBlock->GetKey().c_str());
+            }
         }
     }
 }

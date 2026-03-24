@@ -8,4 +8,9 @@
 -Wformat
 -Wformat-security
 -I./Include/
+-fno-rtti
 -O2
+-msse4.2
+-mavx
+-g
+-fno-exceptions

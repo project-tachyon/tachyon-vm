@@ -41,7 +41,7 @@ static inline ScratchStatus __hot ControlFlow_If(ScratchBlock & Block) {
         CurrentScript->ReturnStack.push_back({
             .ReturnId = Block.GetNextKey(),
             .RepeatId = std::string(),
-            .RepeatsLeft = -1,
+            .RepeatCondition = double(-1),
             .InsideProcedure = bool(GetControlFlag(*CurrentScript, SCRIPT_INSIDE_PROCEDURE)) 
         });
         CurrentScript->CurrentBlockId = SubstackFirstBlock;
@@ -80,7 +80,7 @@ static inline ScratchStatus __hot ControlFlow_IfElse(ScratchBlock & Block) {
     CurrentScript->ReturnStack.push_back({
         .ReturnId = Block.GetNextKey(),
         .RepeatId = std::string(),
-        .RepeatsLeft = -1,
+        .RepeatCondition = double(-1),
         .InsideProcedure = bool(GetControlFlag(*CurrentScript, SCRIPT_INSIDE_PROCEDURE)) 
     });
 
@@ -93,10 +93,9 @@ static inline ScratchStatus __hot ControlFlow_Stop(ScratchBlock & Block) {
     /* just retire the thread for now */
     ScratchMutation & Mutation = Block.GetMutation();
     ScratchField StopOption = Block.GetField(0);
-    if (unlikely(StopOption.Type != ScratchField::FieldType::StopOption)) {
-        DebugError("Invalid stop option field\n");
-        return ScratchStatus::SCRATCH_END;
-    }
+    
+    TachyonAssert(StopOption.Type == ScratchField::FieldType::StringField);
+
     std::string Option(std::get<std::string>(StopOption.Field));
     if (Option == "this script") {
         return ScratchStatus::SCRATCH_END;
@@ -124,13 +123,46 @@ static inline ScratchStatus __hot ControlFlow_Repeat(ScratchBlock & Block) {
     std::string SubstackFirstBlock = std::get<std::string>(Substack.Input);
 
     if (unlikely(SubstackFirstBlock.empty() == true || Times.Type != ScratchData::Type::Number)) {
-        DebugInfo("Optimized pointless repeat\n");
+        return ScratchStatus::SCRATCH_NEXT;
+    }
+
+    CurrentScript->ReturnStack.push_back({
+        .ReturnId = Block.GetNextKey(),
+        .RepeatId = SubstackFirstBlock,
+        .RepeatCondition = Times.Number,
+        .InsideProcedure = bool(GetControlFlag(*CurrentScript, SCRIPT_INSIDE_PROCEDURE)) 
+    });
+    CurrentScript->CurrentBlockId = SubstackFirstBlock;
+    SetControlFlag(*CurrentScript, (SCRIPT_INVALIDATE_BLOCK));
+    return ScratchStatus::SCRATCH_NEXT;
+}
+
+static inline ScratchStatus __hot ControlFlow_While(ScratchBlock & Block) {
+    ScratchInput Condition = Block.GetInput(0);
+    ScratchInput Substack = Block.GetInput(1);
+
+    if (unlikely(Condition.Type == ScratchInput::InputType::InvalidInput)) {
+        /* nothing to execute if the condition is false */
+        return ScratchStatus::SCRATCH_NEXT;
+    }
+
+    TachyonAssert(Substack.Type == ScratchInput::InputType::SubstackInput && Condition.Type == ScratchInput::InputType::ConditionInput);
+
+    ScratchSprite & Owner = Block.GetOwnerSprite();
+    ScratchScript * CurrentScript = Tachyon::GetCurrentScript();
+
+    std::string SubstackFirstBlock = std::get<std::string>(Substack.Input);
+    std::string ConditionBlockId = std::get<std::string>(Condition.Input);
+
+    ScratchBlock * ConditionBlock = Owner.GetBlockFromId(ConditionBlockId);
+
+    if (unlikely(SubstackFirstBlock.empty() == true)) {
         return ScratchStatus::SCRATCH_NEXT;
     }
     CurrentScript->ReturnStack.push_back({
         .ReturnId = Block.GetNextKey(),
         .RepeatId = SubstackFirstBlock,
-        .RepeatsLeft = Times.Number,
+        .RepeatCondition = ConditionBlock,
         .InsideProcedure = bool(GetControlFlag(*CurrentScript, SCRIPT_INSIDE_PROCEDURE)) 
     });
     CurrentScript->CurrentBlockId = SubstackFirstBlock;
@@ -143,4 +175,5 @@ void ControlFlow::RegisterAll(void) {
     Tachyon::RegisterOpHandler("control_if_else", ControlFlow_IfElse);
     Tachyon::RegisterOpHandler("control_stop", ControlFlow_Stop);
     Tachyon::RegisterOpHandler("control_repeat", ControlFlow_Repeat);
+    Tachyon::RegisterOpHandler("control_while", ControlFlow_While);
 }

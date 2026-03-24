@@ -22,7 +22,7 @@
 #define TACHYON_CFG_PBLOCK       (1 << 1)
 
 namespace Tachyon {
-    
+
     using TachyonConfig = uint16_t;
 
     struct VirtualMachine {
@@ -118,11 +118,6 @@ namespace Tachyon {
      * De-initializes SDL3.
      */
     void Quit(void);
-
-    /**
-     * Causes Tachyon to exit.
-     */
-    void Exit(void);
 
     namespace Psuedo {
         bool IsPsuedo(std::string ProcCode);

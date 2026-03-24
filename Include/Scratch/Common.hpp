@@ -9,7 +9,6 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include <iostream>
 #include <memory>
 #include <unordered_map>
 #include <map>
@@ -32,7 +31,7 @@ namespace Scratch {
     struct Script_StackFrame {
         std::string ReturnId;
         std::string RepeatId;
-        double RepeatsLeft = -1;
+        std::variant<double, ScratchBlock *> RepeatCondition;
         bool InsideProcedure;
     };
 
@@ -43,6 +42,7 @@ namespace Scratch {
         std::string FirstBlockId;
         std::string CurrentBlockId;
         std::vector<Script_StackFrame> ReturnStack;
+        std::vector<std::unordered_map<std::string, ScratchData>> ParamBindings;
         ScratchSprite * Sprite;
         ScratchStatus CurrentStatus;
         uint8_t ControlFlags;
@@ -61,11 +61,8 @@ namespace Scratch {
     }
 
     static inline void __hot ScriptReturn(ScratchScript & Script) {
-        if (Script.ReturnStack.empty() == true) {
-            DebugError("Return stack is EMPTY!\n");
-            DebugInfo("Script control flags: 0x%02x\n", Script.ControlFlags);
-            return;
-        }
+        TachyonAssert(Script.ReturnStack.empty() == false);
+
         Script_StackFrame & CurrentStackFrame = Script.ReturnStack.back();
         /* restore procedure control flag */
         Script.ControlFlags &= ~(SCRIPT_INSIDE_PROCEDURE);
@@ -73,6 +70,11 @@ namespace Scratch {
 
         Script.CurrentBlockId = CurrentStackFrame.ReturnId;
         Script.ReturnStack.pop_back();
+    }
+
+    static inline void __hot UnbindParameters(ScratchScript & Script) {
+        TachyonAssert(Script.ParamBindings.empty() == false);
+        Script.ParamBindings.pop_back();
     }
 
     /**
@@ -127,76 +129,100 @@ namespace Scratch {
             }
 
             /**
-             * Contains scratch broadcast information.
-             */
-            struct ScratchBroadcast {
-                std::string Name;
-                std::string Key;
-            };
-
-            /**
              * ScratchSprite constructor.
              * @param The sprite's JSON data.
              */
             ScratchSprite(ondemand::object SpriteData) {
-                /* fetch basic sprite data */
-                this->StageSprite = SpriteData["isStage"]->get_bool().value();
-                this->Name = SpriteData["name"]->get_string().value();
+                /*
+                    isStage
+                */
+                simdjson::simdjson_result Result = SpriteData.find_field_unordered("isStage");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.get_bool().get(this->StageSprite) == error_code::SUCCESS);
+
+                /*
+                    name
+                */
+                Result = SpriteData.find_field_unordered("name");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.get_string().get(this->Name) == error_code::SUCCESS);
+
+                /*
+                    X and Y (if they're present)
+                */
                 if (this->StageSprite == false) {
-                    double SpriteX = SpriteData["x"]->get_number()->as_double();
-                    double SpriteY = SpriteData["y"]->get_number()->as_double();
-                    this->Position = { .X = SpriteX, .Y = SpriteY };
+                    simdjson::simdjson_result ResultX = SpriteData.find_field_unordered("x");
+                    simdjson::simdjson_result ResultY = SpriteData.find_field_unordered("y");
+                    TachyonAssert(ResultX.error() == error_code::SUCCESS);
+                    TachyonAssert(ResultY.error() == error_code::SUCCESS);
+                    
+                    TachyonAssert(ResultX.get_double().get(this->Position.X) == error_code::SUCCESS);
+                    TachyonAssert(ResultY.get_double().get(this->Position.Y) == error_code::SUCCESS);
                 }
                 /* 
                  * TODO: optimize these 
                  * There's definitely a way to reduce the code size. I'm thinking that templates could possibly do the trick,
                  * but I'd have to test that out first to confirm, and right now I am not willing as I have bigger fish to fry.
                  * */
-                /* same for variables */
-                ondemand::object VariableData = SpriteData["variables"]->get_object().value();
-                for (ondemand::field VariableField : VariableData) {
-                    try {
-                        std::string VariableKey(VariableField.unescaped_key().value());
-                        this->Variables.emplace(
-                            VariableKey,
-                            ScratchVariable(VariableField.value(), this->StageSprite)
-                        );
-                    } catch (simdjson_error &Error) {
-                        std::cerr << "failed to load variable: " << Error.what() << std::endl;
-                    }
+                Result = SpriteData.find_field_unordered("variables");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                ondemand::object VariableData;
+                TachyonAssert(Result.get_object().get(VariableData) == error_code::SUCCESS);
+
+                for (auto VariableField : VariableData) {
+                    std::string VariableKey;
+                    TachyonAssert(VariableField.unescaped_key(VariableKey) == error_code::SUCCESS);
+                    
+                    ondemand::array VariableArray;
+                    TachyonAssert(VariableField.value().get_array().get(VariableArray) == error_code::SUCCESS);
+                    this->Variables.emplace(
+                        VariableKey,
+                        ScratchVariable(VariableArray, this->StageSprite)
+                    );
                 }
-                /* lists */
-                ondemand::object ListData = SpriteData["lists"]->get_object().value();
-                for (ondemand::field ListField : ListData) {
-                    try {
-                        std::string ListKey(ListField.unescaped_key().value());
-                        this->Lists.emplace(
-                            ListKey,
-                            ScratchList(ListField.value(), this->StageSprite)
-                        );
-                    } catch (simdjson_error &Error) {
-                        std::cerr << "failed to load list: " << Error.what() << std::endl;
-                    }
+                /*
+                    lists
+                */
+                Result = SpriteData.find_field_unordered("lists");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                ondemand::object ListData;
+                TachyonAssert(Result.get_object().get(ListData) == error_code::SUCCESS);
+
+                for (auto ListField : ListData) {
+                    std::string ListKey;
+                    TachyonAssert(ListField.unescaped_key(ListKey) == error_code::SUCCESS);
+
+                    ondemand::array ListArray;
+                    TachyonAssert(ListField.value().get_array().get(ListArray) == error_code::SUCCESS);
+                    this->Lists.emplace(
+                        ListKey,
+                        ScratchList(ListArray, this->StageSprite)
+                    );
                 }
                 /* blocks */
-                ondemand::object BlockData = SpriteData["blocks"]->get_object().value();
-                for (ondemand::field BlockField : BlockData) {
-                    try {
-                        std::string BlockKey(BlockField.unescaped_key().value());
-                        /* lightning fast when looking for blocks */
-                        uint64_t BlockIdU64 = IdToU64(BlockKey);
-                        std::unique_ptr<ScratchBlock> Block = std::make_unique<ScratchBlock>(BlockKey, BlockField.value(), *this);
-                        if (Block->GetOpcode() == "event_whenflagclicked") {
-                            this->GreenFlags.insert({ BlockIdU64, std::move(Block) });
-                        } else if (Block->IsProcedureDef() == true) {
-                            this->ProcedureDefinitions.insert({ BlockIdU64, std::move(Block) });
-                        } else if (Block->GetOpcode() == "event_whenbroadcastreceived") {
-                            this->BroadcastReceivers.insert({ BlockIdU64, std::move(Block) });
-                        } else {
-                            this->Blocks.insert({ BlockIdU64, std::move(Block) });
-                        }
-                    } catch (simdjson_error &Error) {
-                        std::cerr << "failed to load block: " << Error.what() << std::endl;
+                Result = SpriteData.find_field_unordered("blocks");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                ondemand::object BlockData;
+                TachyonAssert(Result.get_object().get(BlockData) == error_code::SUCCESS);
+
+                for (auto BlockField : BlockData) {
+                    std::string BlockKey;
+                    TachyonAssert(BlockField.unescaped_key(BlockKey) == error_code::SUCCESS);
+
+                    uint64_t BlockIdU64 = IdToU64(BlockKey);
+
+                    ondemand::object BlockObject;
+                    TachyonAssert(BlockField.value().get_object().get(BlockObject) == error_code::SUCCESS);
+
+                    std::unique_ptr<ScratchBlock> Block = std::make_unique<ScratchBlock>(BlockKey, BlockObject, *this);
+                    if (Block->GetOpcode() == "event_whenflagclicked") {
+                        this->GreenFlags.insert({ BlockIdU64, std::move(Block) });
+                    } else if (Block->IsProcedureDef() == true) {
+                        this->ProcedureDefinitions.insert({ BlockIdU64, std::move(Block) });
+                    } else if (Block->GetOpcode() == "event_whenbroadcastreceived") {
+                        this->BroadcastReceivers.insert({ BlockIdU64, std::move(Block) });
+                    } else {
+                        this->Blocks.insert({ BlockIdU64, std::move(Block) });
                     }
                 }
                 /* all blocks loaded. no missing dependencies to worry about */
@@ -204,6 +230,7 @@ namespace Scratch {
                     this->ResolveProcedureDefinitions();
                 }
                 this->CreateScripts();
+                return;
             }
             void CreateScript(ScratchBlock & Block);
             ScratchVariable * __hot GetVariable(std::string VarKey);

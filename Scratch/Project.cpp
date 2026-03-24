@@ -1,6 +1,7 @@
+#include <Tachyon/Tachyon.hpp>
+#include <Tachyon/Debug.hpp>
 #include <Scratch/Common.hpp>
 #include <Scratch/Blocks.hpp>
-#include <Tachyon/Tachyon.hpp>
 #include <Lib/SIMDJson.h>
 #include <zip.h>
 
@@ -11,7 +12,8 @@ void __hot ScratchSprite::CreateScript(ScratchBlock & Block) {
     ScratchScript Script {
         .FirstBlockId = Block.GetNextKey(),
         .CurrentBlockId = Block.GetNextKey(),
-        .ReturnStack = std::vector<Script_StackFrame>(),
+        .ReturnStack = {},
+        .ParamBindings = {},
         .Sprite = this,
         .CurrentStatus = ScratchStatus::SCRATCH_END,
         .ControlFlags = 0,
@@ -27,7 +29,8 @@ void ScratchSprite::CreateScripts(void) {
         ScratchScript Script {
             .FirstBlockId = Block.GetNextKey(),
             .CurrentBlockId = Block.GetNextKey(),
-            .ReturnStack = std::vector<Script_StackFrame>(),
+            .ReturnStack = {},
+            .ParamBindings = {},
             .Sprite = this,
             .CurrentStatus = ScratchStatus::SCRATCH_END,
             .ControlFlags = 0,
@@ -40,18 +43,21 @@ void ScratchSprite::CreateScripts(void) {
 ScratchList * __hot ScratchSprite::GetList(std::string ListKey) {           
     /* check if it's local */
     auto LocalItem = this->Lists.find(ListKey);
-    if (LocalItem == this->Lists.end()) {
-        ScratchSprite * Stage = Tachyon::GetStage();
-        if (unlikely(Stage == nullptr)) {
-            return nullptr;
-        }
-        auto GlobalItem = Stage->Lists.find(ListKey);
-        if (unlikely(GlobalItem == Stage->Lists.end())) {
-            return nullptr;
-        }
-        return &GlobalItem->second;
+    if (LocalItem != this->Lists.end()) {
+        return &LocalItem->second;
     }
-    return &LocalItem->second;
+
+    /* if not, maybe it's global */
+    
+    ScratchSprite * Stage = Tachyon::GetStage();
+    if (unlikely(Stage == nullptr)) {
+        return nullptr;
+    }
+    auto GlobalItem = Stage->Lists.find(ListKey);
+    if (unlikely(GlobalItem == Stage->Lists.end())) {
+        return nullptr;
+    }
+    return &GlobalItem->second;
 }
 
 ScratchVariable * __hot ScratchSprite::GetVariable(std::string VarKey) {           
@@ -94,10 +100,19 @@ int ScratchProject::ParseContents(void) {
     /* convert to json */
     ondemand::parser parser;
     padded_string data(ProjectDataPointer, ProjectStat.size);
-    ondemand::document ProjectJson = parser.iterate(data);
-    /* load everything */
-    for (ondemand::object SpriteObject: ProjectJson["targets"]) {
-        this->Sprites.push_back(std::make_unique<ScratchSprite>(SpriteObject));
+    auto ProjectJson = parser.iterate(data);
+    if (unlikely(ProjectJson.error() != error_code::SUCCESS)) {
+        DebugError("Failed to load Scratch project. Exiting...\n");
+        return -1;
+    }
+    /* begin the load chain */
+    for (auto SpriteField: ProjectJson["targets"]) {
+        ondemand::object SpriteObject;
+        TachyonAssert(SpriteField.get_object().get(SpriteObject) == error_code::SUCCESS);
+
+        this->Sprites.push_back(
+            std::make_unique<ScratchSprite>(SpriteObject)
+        );
     }
     /* we are done */
     free(ProjectDataPointer);
