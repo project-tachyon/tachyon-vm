@@ -372,7 +372,7 @@ SkipChecks:
 
                 if (this->TotalItems >= 200000) {
                     DebugWarn("List \"%s\" goes over 200,000 items; memory usage is bound to increase.\n", this->Name.c_str());
-                    DebugInfo("To reduce memory usage, consider using psuedo-blocks to create a less memory-expensive buffer (if the list ONLY has numbers values under 256).\n");
+                    DebugInfo("To reduce memory usage, consider using pseudo-blocks to create a less memory-expensive buffer (if the list ONLY has numbers values under 256).\n");
                 }
                 this->DitchCache = false;
                 this->Public = IsPublic;

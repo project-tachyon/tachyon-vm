@@ -80,7 +80,7 @@ void Tachyon::InitializeScheduler(ScratchProject & Project) {
     }
     SchedulerYieldQueue.resize(SchedulerRunQueue.size());
     if ((Tachyon::GetConfigVM() & TACHYON_CFG_PBLOCK) == false) {
-        DebugWarn("Psuedo-blocks are disabled. This likely isn't a problem for projects that don't support Tachyon, but for those that do, you may notice a drop in performance and memory efficiency.\n");
+        DebugWarn("Pseudo-blocks are disabled. This likely isn't a problem for projects that don't support Tachyon, but for those that do, you may notice a drop in performance and memory efficiency.\n");
     }
 }
 

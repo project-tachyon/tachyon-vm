@@ -16,8 +16,8 @@
 #define TACHYON_CFG_WATCHDOG  (1 << 0)
 
 /**
- * Configuration option: Psuedo-block support.
- * When enabled, procedures with a certain names are not treated as normal procedures. They instead execute native machine code, which can significantly boosts performance for emulators.
+ * Configuration option: Pseudo-block support.
+ * When enabled, procedures with certain names and structure can be called to make the VM do heavy tasks instead of the project.
  */
 #define TACHYON_CFG_PBLOCK       (1 << 1)
 
@@ -119,8 +119,8 @@ namespace Tachyon {
      */
     void Quit(void);
 
-    namespace Psuedo {
-        bool IsPsuedo(std::string ProcCode);
+    namespace Pseudo {
+        bool IsPseudo(std::string ProcCode);
         Scratch::ScratchStatus Execute(std::string ProcCode, Scratch::ScratchBlock & Block);
         void RegisterAll(void);
     };

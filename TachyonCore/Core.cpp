@@ -44,7 +44,7 @@ int Tachyon::Init(void) {
     Scratch::Sensing::RegisterAll();
     Scratch::Reporters::RegisterAll();
     Scratch::Events::RegisterAll();
-    Tachyon::Psuedo::RegisterAll();
+    Tachyon::Pseudo::RegisterAll();
     /* EXPERIMENTAL FEATURE */
     VM.Configuration |= TACHYON_CFG_PBLOCK;
     TachyonInitialized = true;

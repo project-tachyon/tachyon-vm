@@ -43,10 +43,10 @@ static inline ScratchStatus __hot Procedures_Call(ScratchBlock & Block) {
                 return ScratchStatus::SCRATCH_END;
             }
             if (Tachyon::GetConfigVM() & TACHYON_CFG_PBLOCK) {
-                if (Tachyon::Psuedo::IsPsuedo(Procedure.ProcCode) == true) {
+                if (Tachyon::Pseudo::IsPseudo(Procedure.ProcCode) == true) {
                     /* act as if nothing ever happened */
                     CurrentScript->CurrentBlockId = Block.GetNextKey();
-                    return Tachyon::Psuedo::Execute(Procedure.ProcCode, Block);
+                    return Tachyon::Pseudo::Execute(Procedure.ProcCode, Block);
                 }
             }
             ScratchBlock * ProcBlock = Owner.GetBlockFromId(Procedure.DefinitionKey);
