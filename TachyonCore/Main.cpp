@@ -34,4 +34,5 @@ int main(int argc, char * argv[]) {
     /* die tachyon, die */
     Tachyon::Quit();
     return 0;
+    /* global deconstructors do most of the project memory deallocation work for us */
 }

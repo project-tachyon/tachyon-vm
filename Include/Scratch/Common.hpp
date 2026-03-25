@@ -82,11 +82,116 @@ namespace Scratch {
      * @param The block key
      * @return A 64-bit ID
      */
-    inline uint32_t IdToU64(const std::string_view Key) {
+    inline uint64_t IdToU64(const std::string_view Key) {
         uint64_t IdU64 = 0;
         memcpy(&IdU64, Key.data(), std::min(Key.size(), sizeof(uint64_t)));
         return IdU64;
     }
+
+    class ScratchAsset {
+        public:
+            inline std::string & GetName(void) {
+                return this->Name;
+            }
+            inline std::string & GetFilename(void) {
+                return this->Name;
+            }
+        protected:
+
+            inline void GetAssetInformation(ondemand::object & ObjectData) {
+                ObjectData.reset();
+                /*
+                    name
+                */
+                simdjson::simdjson_result Result = ObjectData.find_field("name");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.get_string().get(this->Name) == error_code::SUCCESS);
+                /*
+                    md5ext
+                */
+                Result = ObjectData.find_field("md5ext");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.get_string().get(this->Filename) == error_code::SUCCESS);
+
+                /*
+                    dataFormat
+                */
+                Result = ObjectData.find_field_unordered("dataFormat");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                std::string FormatString;
+                TachyonAssert(Result.get_string().get(FormatString) == error_code::SUCCESS);
+
+                this->Format = DataFormat::UnknownFormat;
+                if (FormatString == "svg") this->Format = DataFormat::SVGFormat;
+                if (FormatString == "wav") this->Format = DataFormat::WAVFormat;
+
+                ObjectData.reset();
+            }
+            std::string Name;
+            std::string Filename;
+            enum class DataFormat : uint8_t { UnknownFormat, SVGFormat, WAVFormat } Format;
+    };
+
+    class ScratchSound : ScratchAsset {
+        public:
+            ScratchSound(ondemand::object ObjectData) {
+                this->GetAssetInformation(ObjectData);
+
+                TachyonAssert(this->Format == DataFormat::WAVFormat);
+
+                /*
+                    rate
+                */
+                simdjson::simdjson_result Result = ObjectData.find_field("rate");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.get_uint64().get(this->SampleRate) == error_code::SUCCESS);
+                /*
+                    sampleCount
+                */
+                Result = ObjectData.find_field("sampleCount");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.get_uint64().get(this->TotalSamples) == error_code::SUCCESS);
+
+                // DebugInfo("Sound name: %s, filename: %s, sample rate: %llu, total samples: %llu\n",
+                //     this->Name.c_str(),
+                //     this->Filename.c_str(),
+                //     this->SampleRate,
+                //     this->TotalSamples
+                // );
+            }
+        private:
+            uint64_t SampleRate;
+            uint64_t TotalSamples;
+    };
+
+    class ScratchCostume : ScratchAsset {
+        public:
+            ScratchCostume(ondemand::object ObjectData) {
+                this->GetAssetInformation(ObjectData);
+
+                TachyonAssert(this->Format == DataFormat::SVGFormat);
+
+                /*
+                    rotationCenterX and rotationCenterY
+                */
+                simdjson::simdjson_result Result = ObjectData.find_field("rotationCenterX");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.get_double().get(this->RotationCenter.first) == error_code::SUCCESS);
+
+                Result = ObjectData.find_field("rotationCenterY");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                TachyonAssert(Result.get_double().get(this->RotationCenter.second) == error_code::SUCCESS);
+
+                // DebugInfo("Costume name: %s, filename: %s, rotation center position: (%f, %f)\n",
+                //     this->Name.c_str(),
+                //     this->Filename.c_str(),
+                //     this->RotationCenter.first,
+                //     this->RotationCenter.second
+                // );
+            }
+        private:
+            ScratchPosition RotationCenter;
+    };
 
     /**
      * Contains a scratch sprite's information.
@@ -97,7 +202,7 @@ namespace Scratch {
              * Gets the Scratch sprite's name.
              * @return The sprite's name.
              */
-            inline std::string_view GetName(void) {
+            inline std::string & GetName(void) {
                 return this->Name;
             }
             /**
@@ -116,12 +221,12 @@ namespace Scratch {
                 if (unlikely(Id.empty() == true)) {
                     return nullptr;
                 }
-                uint32_t IdU32 = IdToU64(Id);
-                auto Item = this->Blocks.find(IdU32);
+                uint64_t IdU64 = IdToU64(Id);
+                auto Item = this->Blocks.find(IdU64);
                 if (unlikely(Item != this->Blocks.end())) {
                     return Item->second.get();
                 }
-                Item = this->ProcedureDefinitions.find(IdU32);
+                Item = this->ProcedureDefinitions.find(IdU64);
                 if (unlikely(Item != this->ProcedureDefinitions.end())) {
                     return Item->second.get();
                 }
@@ -156,14 +261,12 @@ namespace Scratch {
                     TachyonAssert(ResultX.error() == error_code::SUCCESS);
                     TachyonAssert(ResultY.error() == error_code::SUCCESS);
                     
-                    TachyonAssert(ResultX.get_double().get(this->Position.X) == error_code::SUCCESS);
-                    TachyonAssert(ResultY.get_double().get(this->Position.Y) == error_code::SUCCESS);
+                    TachyonAssert(ResultX.get_double().get(this->Position.first) == error_code::SUCCESS);
+                    TachyonAssert(ResultY.get_double().get(this->Position.second) == error_code::SUCCESS);
                 }
-                /* 
-                 * TODO: optimize these 
-                 * There's definitely a way to reduce the code size. I'm thinking that templates could possibly do the trick,
-                 * but I'd have to test that out first to confirm, and right now I am not willing as I have bigger fish to fry.
-                 * */
+                /*
+                    variables
+                */
                 Result = SpriteData.find_field_unordered("variables");
                 TachyonAssert(Result.error() == error_code::SUCCESS);
                 ondemand::object VariableData;
@@ -199,7 +302,41 @@ namespace Scratch {
                         ScratchList(ListArray, this->StageSprite)
                     );
                 }
-                /* blocks */
+                /*
+                    sounds
+                */
+                Result = SpriteData.find_field_unordered("sounds");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                ondemand::array SoundArray;
+                TachyonAssert(Result.get_array().get(SoundArray) == error_code::SUCCESS);
+
+                for (auto SoundField : SoundArray) {
+                    ondemand::object SoundObject;
+                    TachyonAssert(SoundField.get_object().get(SoundObject) == error_code::SUCCESS);
+
+                    this->Sounds.emplace_back(
+                        ScratchSound(SoundObject)
+                    );
+                }
+                /*
+                    costumes
+                */
+                Result = SpriteData.find_field_unordered("costumes");
+                TachyonAssert(Result.error() == error_code::SUCCESS);
+                ondemand::array CostumeArray;
+                TachyonAssert(Result.get_array().get(CostumeArray) == error_code::SUCCESS);
+
+                for (auto CostumeField : CostumeArray) {
+                    ondemand::object CostumeObject;
+                    TachyonAssert(CostumeField.get_object().get(CostumeObject) == error_code::SUCCESS);
+
+                    this->Costumes.emplace_back(
+                        ScratchCostume(CostumeObject)
+                    );
+                }
+                /* 
+                    blocks 
+                */
                 Result = SpriteData.find_field_unordered("blocks");
                 TachyonAssert(Result.error() == error_code::SUCCESS);
                 ondemand::object BlockData;
@@ -232,6 +369,7 @@ namespace Scratch {
                 this->CreateScripts();
                 return;
             }
+
             void CreateScript(ScratchBlock & Block);
             ScratchVariable * __hot GetVariable(std::string VarKey);
             ScratchList * __hot GetList(std::string ListKey);           
@@ -242,6 +380,8 @@ namespace Scratch {
             std::unordered_map<uint32_t, std::unique_ptr<ScratchBlock>> ProcedureDefinitions;
             std::unordered_map<std::string, ScratchVariable> Variables;
             std::unordered_map<std::string, ScratchList> Lists;
+            std::vector<ScratchSound> Sounds;
+            std::vector<ScratchCostume> Costumes;
             std::vector<ScratchScript> Scripts;
             std::vector<ScratchProcedure> Procedures;
             ScratchPosition Position;
@@ -271,24 +411,21 @@ namespace Scratch {
                 this->ProjectZip_Path = ZipPath;
             }
 
-            ~ScratchProject(void) {
-                Close();
+            ~ScratchProject() {
+                this->Close();
             }
 
             /**
              * De-initializes and closes the project and it's file.
              */
-            void Close(void) {
-                if (this->ProjectZip != nullptr) {
-                    if (zip_close(this->ProjectZip) < 0) {
-                        zip_discard(this->ProjectZip);
-                    }
+            inline void Close(void) {
+                TachyonAssert(this->ProjectZip != nullptr);
+                if (zip_close(this->ProjectZip) < 0) {
+                    zip_discard(this->ProjectZip);
                 }
                 this->Sprites.clear();
                 this->ProjectZip_Path.clear();
             }
-
-            //ScratchBlock * SearchBroadcast(std::string_view Name);
 
             /**
              * Checks whether the project has been loaded.

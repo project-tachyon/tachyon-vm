@@ -14,8 +14,8 @@ static inline ScratchStatus Motion_GoToXY(ScratchBlock & Block) {
     double DestY = Y_Data.Type == ScratchData::Type::Number ? Y_Data.Number : 0;
 
     ScratchSprite & Owner = Block.GetOwnerSprite();
-    Owner.Position.X = (DestX > 255) ? 255 : DestX;
-    Owner.Position.Y = (DestY > 255) ? 255 : DestY;
+    Owner.Position.first = (DestX > 255) ? 255 : DestX;
+    Owner.Position.second = (DestY > 255) ? 255 : DestY;
 
     return ScratchStatus::SCRATCH_NEXT;
 }

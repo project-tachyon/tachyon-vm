@@ -83,24 +83,24 @@ int ScratchProject::ParseContents(void) {
     zip_stat(this->ProjectZip, "project.json", ZIP_STAT_SIZE, &ProjectStat);
     zip_file_t * ProjectJsonFile = zip_fopen(this->ProjectZip, "project.json", 0);
     if (ProjectJsonFile == nullptr) {
-        Close();
+        this->Close();
         return -1;
     }
     char * ProjectDataPointer = (char *)malloc(ProjectStat.size);
     if (unlikely(ProjectDataPointer == nullptr)) {
-        Close();
+        this->Close();
         return -1;
     }
     if (zip_fread(ProjectJsonFile, ProjectDataPointer, ProjectStat.size) < 0) {
         free(ProjectDataPointer);
         zip_fclose(ProjectJsonFile);
-        Close();
+        this->Close();
         return -1;
     }
     /* convert to json */
     ondemand::parser parser;
     padded_string data(ProjectDataPointer, ProjectStat.size);
-    auto ProjectJson = parser.iterate(data);
+    simdjson::simdjson_result ProjectJson = parser.iterate(data);
     if (unlikely(ProjectJson.error() != error_code::SUCCESS)) {
         DebugError("Failed to load Scratch project. Exiting...\n");
         return -1;

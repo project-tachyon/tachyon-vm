@@ -5,6 +5,7 @@
 #include <Lib/SIMDJson.h>
 #include <charconv>
 #include <cmath>
+#include <iomanip>
 #include <limits>
 #include <string_view>
 #include <string>
@@ -126,11 +127,11 @@ namespace Scratch {
                     break;
                 }
                 case ScratchData::Type::Number: {
-                    Stream << std::to_string(Self.Number);
+                    Stream << std::fixed << std::setprecision(0) << Self.Number;
                     break;
                 }
                 case ScratchData::Type::Boolean: {
-                    Stream << (Self.Boolean == true ? "True" : "False");
+                    Stream << (Self.Boolean == true ? "true" : "false");
                 }
             }
             return Stream;
@@ -142,30 +143,31 @@ namespace Scratch {
                 this->String.~basic_string();
             }
         }
+
     } ScratchData;
    
     typedef struct {
-        std::errc ec;
         ScratchData data;
+        std::errc ec;
     } Snum2DataResult;
 
     inline Snum2DataResult __hot StringNum2ScratchData(std::string_view String) {
         if (unlikely(String.empty() == true)) {
-            return { std::errc::invalid_argument, ScratchData(double(0)) };
+            return { ScratchData(double(0)), std::errc::invalid_argument };
         }
         /* remove whitespace */
         while(String[0] == ' ' && String.size() > 1) String.remove_prefix(1);
 
         if (unlikely(String.empty() == true)) {
-            return { std::errc::invalid_argument, ScratchData(double(0)) };
+            return { ScratchData(double(0)), std::errc::invalid_argument };
         }
 
         while(String[String.length() - 1] == ' ' && String.size() > 1) String.remove_suffix(1);
 
         if (String == "Infinity" || String == "+Infinity") {
-            return { std::errc(), ScratchData(std::numeric_limits<double>::infinity()) };
+            return { ScratchData(std::numeric_limits<double>::infinity()), std::errc()};
         } else if (String == "-Infinity") {
-            return { std::errc(), ScratchData(-std::numeric_limits<double>::infinity()) };
+            return { ScratchData(-std::numeric_limits<double>::infinity()), std::errc() };
         }
         uint8_t RadixModifier = 10;
 
@@ -196,27 +198,27 @@ namespace Scratch {
                 std::from_chars_result Result = std::from_chars(String.begin(), String.end(), NonDecConversion, RadixModifier);
                 if (Result.ec == std::errc::invalid_argument) {
                     /* bad num */
-                    return { std::errc::invalid_argument, ScratchData(double(0)) };
+                    return { ScratchData(double(0)), std::errc::invalid_argument };
                 } else if (Result.ec == std::errc::result_out_of_range) {
                     /* other possible result could be out of range (infinity for scratch) */
-                    return { std::errc(), ScratchData(std::numeric_limits<double>::infinity()) };
+                    return { ScratchData(std::numeric_limits<double>::infinity()), std::errc() };
                 }
-                return { std::errc(), ScratchData(double(NonDecConversion)) };
+                return { ScratchData(double(NonDecConversion)), std::errc() };
             }
         }
 SkipChecks:
         if (IS_INVALID_BASE10(String[String.length() - 1]) == true) {
-            return { std::errc::invalid_argument, ScratchData(double(0)) };
+            return { ScratchData(double(0)), std::errc::invalid_argument };
         }
         bool PastEuler = false;
         for(size_t i = 0; i < String.length(); i++) {
             const char c = String[i];
             if (IS_VALID_BASE10(c) == false) {
-                return { std::errc::invalid_argument, ScratchData(double(0)) };
+                return { ScratchData(double(0)), std::errc::invalid_argument };
             }
             if (PastEuler) {
                 if (c == '.') {
-                    return { std::errc::invalid_argument, ScratchData(double(0)) };
+                    return { ScratchData(double(0)), std::errc::invalid_argument };
                 }
             }
             if (c == 'e' || c == 'E') {
@@ -226,15 +228,15 @@ SkipChecks:
         double ConvertedBase10;
         std::from_chars_result Result = std::from_chars(String.begin(), String.end(), ConvertedBase10);
         if (Result.ec == std::errc::invalid_argument) {
-            return { std::errc::invalid_argument, ScratchData(double(0)) };
+            return { ScratchData(double(0)), std::errc::invalid_argument };
         } else if (Result.ec == std::errc::result_out_of_range) {
-            return { std::errc(), ScratchData((String[0] == '-') ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity()) };
+            return { ScratchData((String[0] == '-') ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity()), std::errc() };
         }
         /* could be nan or infinity */
         if (unlikely(std::isnan(ConvertedBase10) == true)) {
-            return { std::errc(), ScratchData("NaN") };
+            return { ScratchData("NaN"), std::errc() };
         }
-        return { std::errc(), ScratchData(ConvertedBase10) };
+        return { ScratchData(ConvertedBase10), std::errc() };
     }
 
     inline const std::string __hot Data2String(ScratchData & Data) {
@@ -305,7 +307,7 @@ SkipChecks:
 
     class ScratchVariable_Base {
         public:
-            inline std::string GetName(void) {
+            inline std::string & GetName(void) {
                 return this->Name;
             }
             inline bool IsPublic(void) {
@@ -364,7 +366,7 @@ SkipChecks:
                 TachyonAssert(Result.get_array().get(ListArray) == error_code::SUCCESS);
                 TachyonAssert(ListArray.count_elements().get(this->TotalItems) == error_code::SUCCESS);
 
-                std::string_view RawJsonString;
+                std::string RawJsonString;
                 TachyonAssert(ListArray.raw_json().get(RawJsonString) == error_code::SUCCESS);
                 this->ListJson = padded_string(RawJsonString);
 

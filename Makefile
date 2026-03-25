@@ -14,7 +14,7 @@ CPPFLAGS := \
 	-Wformat-security \
 	-I $(SRC)/Include/ \
 	-fno-rtti \
-	-O2 \
+	-O0 \
 	-msse4.2 \
 	-mavx \
 	-g \

@@ -1,13 +1,12 @@
 #pragma once
 
+#include <utility>
+
 namespace Scratch {
     /**
      * Contains X and Y values for a sprite.
      */
-    typedef struct {
-        double X;
-        double Y;
-    } ScratchPosition;
+    using ScratchPosition = std::pair<double, double>;
 
     namespace Motion {
         void RegisterAll(void);
