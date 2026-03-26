@@ -187,44 +187,53 @@ static inline ScratchStatus __hot ExecuteScript(ScratchScript & Script) {
     __unreachable;
 }
 
-static inline void DumpScriptInformation(ScratchScript & Script) {
-    DebugInfo("---- SCRIPT INFORMATION DUMP ----\n");
-    DebugInfo("Owner sprite name: %s\n", Script.Sprite->GetName().data());
-    DebugInfo("First block ID: %s\n", Script.FirstBlockId.c_str());
-    DebugInfo("Return stack total pending calls: %d\n", Script.ReturnStack.size());
-    DebugInfo("Script CFLAGS: 0x%02x\n", Script.ControlFlags);
-    DebugInfo("Script stack backtrace:\n");
-    for(const Script_StackFrame & StackFrame : Script.ReturnStack) {
-        DebugInfo("\tReturn block ID: %s\n", StackFrame.ReturnId.c_str());
-        DebugInfo("\tWas in procedure? %s\n", StackFrame.InsideProcedure ? "true" : "false");
-        if (StackFrame.RepeatId.empty() == false) {
-            DebugInfo("\tRepeat start block ID: %s\n", StackFrame.RepeatId.c_str());
+// static inline void DumpScriptInformation(ScratchScript & Script) {
+//     DebugInfo("---- SCRIPT INFORMATION DUMP ----\n");
+//     DebugInfo("Owner sprite name: %s\n", Script.Sprite->GetName().data());
+//     DebugInfo("First block ID: %s\n", Script.FirstBlockId.c_str());
+//     DebugInfo("Return stack total pending calls: %d\n", Script.ReturnStack.size());
+//     DebugInfo("Script CFLAGS: 0x%02x\n", Script.ControlFlags);
+//     DebugInfo("Script stack backtrace:\n");
+//     for(const Script_StackFrame & StackFrame : Script.ReturnStack) {
+//         DebugInfo("\tReturn block ID: %s\n", StackFrame.ReturnId.c_str());
+//         DebugInfo("\tWas in procedure? %s\n", StackFrame.InsideProcedure ? "true" : "false");
+//         if (StackFrame.RepeatId.empty() == false) {
+//             DebugInfo("\tRepeat start block ID: %s\n", StackFrame.RepeatId.c_str());
 
-            if (std::holds_alternative<double>(StackFrame.RepeatCondition) == true) {
-                /* repeat times */
-                const double RepeatsLeft = std::get<double>(StackFrame.RepeatCondition);
-                DebugInfo("\tTotal repeats left: %d\n", RepeatsLeft + 1);
-            } else {
-                /* repeat condition */
-                ScratchBlock * ConditionBlock = std::get<ScratchBlock *>(StackFrame.RepeatCondition);
-                TachyonAssert(ConditionBlock != nullptr);
-                DebugInfo("\tRepeat condition block ID: %s\n", ConditionBlock->GetKey().c_str());
-            }
-        }
+//             if (std::holds_alternative<double>(StackFrame.RepeatCondition) == true) {
+//                 /* repeat times */
+//                 const double RepeatsLeft = std::get<double>(StackFrame.RepeatCondition);
+//                 DebugInfo("\tTotal repeats left: %d\n", RepeatsLeft + 1);
+//             } else {
+//                 /* repeat condition */
+//                 ScratchBlock * ConditionBlock = std::get<ScratchBlock *>(StackFrame.RepeatCondition);
+//                 TachyonAssert(ConditionBlock != nullptr);
+//                 DebugInfo("\tRepeat condition block ID: %s\n", ConditionBlock->GetKey().c_str());
+//             }
+//         }
+//     }
+// }
+
+static inline ScratchScript * GetNextScript(void) {
+    if (likely(SchedulerRunQueue.empty() == false)) {
+        return &SchedulerRunQueue.at(0);
     }
-}
+    return nullptr;
+} 
 
 bool __hot Tachyon::Step(void) {
-    if (unlikely(SchedulerRunQueue.empty() == true)) {
+    if (unlikely(SchedulerRunQueue.empty() && SchedulerYieldQueue.empty())) {
         /* exit */
         std::cout << "no more scripts to run. exiting..." << std::endl;
         return true;
     }
     /* NOTE: waking up scripts isnt implemeneted, so they'll be sleeping beauty for the time being */
-    CurrentScript = &SchedulerRunQueue.at(0);
+    CurrentScript = GetNextScript();
+    if (unlikely(CurrentScript == nullptr)) {
+        DebugWarn("HELLO\n");
+        return false;
+    }
     ScratchStatus Status = ExecuteScript(*CurrentScript);
-    /* purely for debugging purposes */
-    DumpScriptInformation(*CurrentScript);
     if (Status == ScratchStatus::SCRATCH_WAIT || Status == ScratchStatus::SCRATCH_WAIT_UNTIL || Status == ScratchStatus::SCRATCH_PAUSE) {
         /* let others breathe */
         CurrentScript->CurrentStatus = Status;

@@ -1,3 +1,4 @@
+#include "Tachyon/Debug.hpp"
 #include <Scratch/ControlFlow.hpp>
 #include <Scratch/Reporters.hpp>
 #include <Scratch/Sensing.hpp>
@@ -78,14 +79,15 @@ void __hot Tachyon::MainLoop(void) {
                 case SDL_EVENT_KEY_DOWN:
                     if (event.key.key == SDLK_ESCAPE) {
                         VM.ShouldExit = true;
+                        return;
                     }
                     break;
                 case SDL_EVENT_QUIT:
                     VM.ShouldExit = true;
-                    break;
+                    return;
                 case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                     VM.ShouldExit = true;
-                    break;
+                    return;
                 default:
                     break;
             }
