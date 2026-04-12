@@ -6,7 +6,7 @@
 
 using namespace Scratch;
 
-static inline ScratchStatus Motion_GoToXY(ScratchBlock & Block) {
+static ScratchStatus Motion_GoToXY(ScratchBlock & Block) {
     ScratchData X_Data = Block.GetInputData(0);
     ScratchData Y_Data = Block.GetInputData(1);
 

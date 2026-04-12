@@ -8,6 +8,7 @@
 #include <Lib/SIMDJson.h>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 #include <memory>
 #include <unordered_map>
@@ -32,8 +33,11 @@ namespace Scratch {
         std::string ReturnId;
         std::string RepeatId;
         std::variant<double, ScratchBlock *> RepeatCondition;
+        //enum class Type { Invalid, Repeat, RepeatUntil } RepeatType;
         bool InsideProcedure;
     };
+
+    using ProcedureBindings = std::unordered_map<std::string, ScratchData>;
 
     /**
      * Contains the information of a script.
@@ -42,11 +46,15 @@ namespace Scratch {
         std::string FirstBlockId;
         std::string CurrentBlockId;
         std::vector<Script_StackFrame> ReturnStack;
-        std::vector<std::unordered_map<std::string, ScratchData>> ParamBindings;
+        std::vector<ProcedureBindings> ParamBindings;
         ScratchSprite * Sprite;
         ScratchStatus CurrentStatus;
         uint8_t ControlFlags;
     };
+
+    static constexpr bool __hot ShouldRepeatConditionally(Script_StackFrame & Frame) {
+        return std::holds_alternative<ScratchBlock *>(Frame.RepeatCondition);
+    }
 
     static inline void __hot SetControlFlag(ScratchScript & Script, uint8_t Flag) {
         Script.ControlFlags |= Flag;
@@ -56,7 +64,7 @@ namespace Scratch {
         Script.ControlFlags &= ~(Flag);
     }
 
-    static inline bool __hot GetControlFlag(ScratchScript & Script, uint8_t Flag) {
+    static constexpr bool __hot GetControlFlag(ScratchScript & Script, uint8_t Flag) {
         return (Script.ControlFlags & Flag);
     }
 
@@ -77,12 +85,23 @@ namespace Scratch {
         Script.ParamBindings.pop_back();
     }
 
+    static inline ScratchStatus __hot ScriptRecursiveReturn(ScratchScript & Script) {
+        while(likely(Script.CurrentBlockId.empty() == true)) {
+            if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == false) {
+                return ScratchStatus::SCRATCH_END;
+            }
+            ScriptReturn(Script);
+            UnbindParameters(Script);
+        }
+        return ScratchStatus::SCRATCH_NEXT;
+    }
+
     /**
      * Only works for block keys.
      * @param The block key
      * @return A 64-bit ID
      */
-    inline uint64_t IdToU64(const std::string_view Key) {
+    inline uint64_t __hot IdToU64(const std::string_view Key) {
         uint64_t IdU64 = 0;
         memcpy(&IdU64, Key.data(), std::min(Key.size(), sizeof(uint64_t)));
         return IdU64;
@@ -90,15 +109,15 @@ namespace Scratch {
 
     class ScratchAsset {
         public:
-            inline std::string & GetName(void) {
+            constexpr const std::string & GetName(void) {
                 return this->Name;
             }
-            inline std::string & GetFilename(void) {
-                return this->Name;
+            constexpr const std::string & GetFilename(void) {
+                return this->Filename;
             }
         protected:
 
-            inline void GetAssetInformation(ondemand::object & ObjectData) {
+            void GetAssetInformation(ondemand::object & ObjectData) {
                 ObjectData.reset();
                 /*
                     name
@@ -123,13 +142,14 @@ namespace Scratch {
 
                 this->Format = DataFormat::UnknownFormat;
                 if (FormatString == "svg") this->Format = DataFormat::SVGFormat;
+                if (FormatString == "png") this->Format = DataFormat::PNGFormat;
                 if (FormatString == "wav") this->Format = DataFormat::WAVFormat;
 
                 ObjectData.reset();
             }
             std::string Name;
             std::string Filename;
-            enum class DataFormat : uint8_t { UnknownFormat, SVGFormat, WAVFormat } Format;
+            enum class DataFormat : uint8_t { UnknownFormat, SVGFormat, PNGFormat, WAVFormat } Format;
     };
 
     class ScratchSound : ScratchAsset {
@@ -151,13 +171,6 @@ namespace Scratch {
                 Result = ObjectData.find_field("sampleCount");
                 TachyonAssert(Result.error() == error_code::SUCCESS);
                 TachyonAssert(Result.get_uint64().get(this->TotalSamples) == error_code::SUCCESS);
-
-                // DebugInfo("Sound name: %s, filename: %s, sample rate: %llu, total samples: %llu\n",
-                //     this->Name.c_str(),
-                //     this->Filename.c_str(),
-                //     this->SampleRate,
-                //     this->TotalSamples
-                // );
             }
         private:
             uint64_t SampleRate;
@@ -169,7 +182,7 @@ namespace Scratch {
             ScratchCostume(ondemand::object ObjectData) {
                 this->GetAssetInformation(ObjectData);
 
-                TachyonAssert(this->Format == DataFormat::SVGFormat);
+                TachyonAssert(this->Format != DataFormat::UnknownFormat);
 
                 /*
                     rotationCenterX and rotationCenterY
@@ -181,13 +194,6 @@ namespace Scratch {
                 Result = ObjectData.find_field("rotationCenterY");
                 TachyonAssert(Result.error() == error_code::SUCCESS);
                 TachyonAssert(Result.get_double().get(this->RotationCenter.second) == error_code::SUCCESS);
-
-                // DebugInfo("Costume name: %s, filename: %s, rotation center position: (%f, %f)\n",
-                //     this->Name.c_str(),
-                //     this->Filename.c_str(),
-                //     this->RotationCenter.first,
-                //     this->RotationCenter.second
-                // );
             }
         private:
             ScratchPosition RotationCenter;
@@ -202,14 +208,14 @@ namespace Scratch {
              * Gets the Scratch sprite's name.
              * @return The sprite's name.
              */
-            inline std::string & GetName(void) {
+            constexpr const std::string & GetName(void) {
                 return this->Name;
             }
             /**
              * If true, the sprite is publicly accessible. Otherwise, it is local to the sprite.
              * @return A boolean that tells whether a variable is public or not.
              */
-            inline bool IsStage(void) {
+            constexpr bool IsStage(void) {
                 return this->StageSprite;
             }
             /**
@@ -233,6 +239,10 @@ namespace Scratch {
                 return nullptr;
             }
 
+            constexpr bool __hot IsVisible(void) {
+                return this->Visibile;
+            }
+
             /**
              * ScratchSprite constructor.
              * @param The sprite's JSON data.
@@ -251,6 +261,15 @@ namespace Scratch {
                 Result = SpriteData.find_field_unordered("name");
                 TachyonAssert(Result.error() == error_code::SUCCESS);
                 TachyonAssert(Result.get_string().get(this->Name) == error_code::SUCCESS);
+
+                /*
+                    visible
+                */
+                if (this->StageSprite == false) {
+                    Result = SpriteData.find_field_unordered("visible");
+                    TachyonAssert(Result.error() == error_code::SUCCESS);
+                    TachyonAssert(Result.get_bool().get(this->Visibile) == error_code::SUCCESS);
+                }
 
                 /*
                     X and Y (if they're present)
@@ -278,9 +297,13 @@ namespace Scratch {
                     
                     ondemand::array VariableArray;
                     TachyonAssert(VariableField.value().get_array().get(VariableArray) == error_code::SUCCESS);
+
+                    ScratchVariable Variable = ScratchVariable(VariableArray, this->StageSprite);
+
+                    this->VariableKeyLUT.emplace(Variable.GetName(), VariableKey);
                     this->Variables.emplace(
                         VariableKey,
-                        ScratchVariable(VariableArray, this->StageSprite)
+                        std::move(Variable)
                     );
                 }
                 /*
@@ -297,9 +320,13 @@ namespace Scratch {
 
                     ondemand::array ListArray;
                     TachyonAssert(ListField.value().get_array().get(ListArray) == error_code::SUCCESS);
+
+                    ScratchList List = ScratchList(ListArray, this->StageSprite);
+
+                    this->ListKeyLUT.emplace(List.GetName(), ListKey);
                     this->Lists.emplace(
                         ListKey,
-                        ScratchList(ListArray, this->StageSprite)
+                        std::move(List)
                     );
                 }
                 /*
@@ -315,7 +342,7 @@ namespace Scratch {
                     TachyonAssert(SoundField.get_object().get(SoundObject) == error_code::SUCCESS);
 
                     this->Sounds.emplace_back(
-                        ScratchSound(SoundObject)
+                        std::move(ScratchSound(SoundObject))
                     );
                 }
                 /*
@@ -331,7 +358,7 @@ namespace Scratch {
                     TachyonAssert(CostumeField.get_object().get(CostumeObject) == error_code::SUCCESS);
 
                     this->Costumes.emplace_back(
-                        ScratchCostume(CostumeObject)
+                        std::move(ScratchCostume(CostumeObject))
                     );
                 }
                 /* 
@@ -352,6 +379,7 @@ namespace Scratch {
                     TachyonAssert(BlockField.value().get_object().get(BlockObject) == error_code::SUCCESS);
 
                     std::unique_ptr<ScratchBlock> Block = std::make_unique<ScratchBlock>(BlockKey, BlockObject, *this);
+
                     if (Block->GetOpcode() == "event_whenflagclicked") {
                         this->GreenFlags.insert({ BlockIdU64, std::move(Block) });
                     } else if (Block->IsProcedureDef() == true) {
@@ -367,30 +395,39 @@ namespace Scratch {
                     this->ResolveProcedureDefinitions();
                 }
                 this->CreateScripts();
-                return;
             }
 
             void CreateScript(ScratchBlock & Block);
-            ScratchVariable * __hot GetVariable(std::string VarKey);
-            ScratchList * __hot GetList(std::string ListKey);           
+
+            ScratchVariable * __hot GetVariableFromKey(std::string VarKey);
+            ScratchList * __hot GetListFromKey(std::string ListKey);           
+
+            ScratchVariable * __hot GetVariable(std::string VarName);
+            ScratchList * __hot GetList(std::string ListName); 
 
             std::map<uint32_t, std::unique_ptr<ScratchBlock>> GreenFlags;
             std::unordered_map<uint32_t, std::unique_ptr<ScratchBlock>> BroadcastReceivers;
             std::unordered_map<uint32_t, std::unique_ptr<ScratchBlock>> Blocks;
             std::unordered_map<uint32_t, std::unique_ptr<ScratchBlock>> ProcedureDefinitions;
+
             std::unordered_map<std::string, ScratchVariable> Variables;
             std::unordered_map<std::string, ScratchList> Lists;
+            std::unordered_map<std::string, std::string> VariableKeyLUT;
+            std::unordered_map<std::string, std::string> ListKeyLUT;
+
             std::vector<ScratchSound> Sounds;
             std::vector<ScratchCostume> Costumes;
             std::vector<ScratchScript> Scripts;
             std::vector<ScratchProcedure> Procedures;
             ScratchPosition Position;
+
         private:
-            bool StageSprite;
-            std::string Name;
             void CreateScripts(void);
             void DescendBlocks(ondemand::object BlocksObjects);
             void ResolveProcedureDefinitions(void);
+            std::string Name;
+            bool Visibile = true;
+            bool StageSprite;
     };
 
     /**
@@ -418,7 +455,7 @@ namespace Scratch {
             /**
              * De-initializes and closes the project and it's file.
              */
-            inline void Close(void) {
+            void Close(void) {
                 TachyonAssert(this->ProjectZip != nullptr);
                 if (zip_close(this->ProjectZip) < 0) {
                     zip_discard(this->ProjectZip);
@@ -431,7 +468,7 @@ namespace Scratch {
              * Checks whether the project has been loaded.
              * @return Returns true if it has been loaded, otherwise false.
              */
-            bool IsLoaded(void) {
+            inline bool IsLoaded(void) {
                 return ProjectZip_Path.empty() == false;
             }
 

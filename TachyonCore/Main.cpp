@@ -1,3 +1,4 @@
+#include "Tachyon/Debug.hpp"
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keycode.h>
@@ -30,6 +31,7 @@ int main(int argc, char * argv[]) {
         return -1;
     }
     Tachyon::InitializeScheduler(MainProject);
+    DebugInfo("Beginning execution..\n");
     Tachyon::MainLoop();
     /* die tachyon, die */
     Tachyon::Quit();

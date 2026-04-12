@@ -35,7 +35,7 @@ namespace Scratch {
     struct Field_Variable {
         std::string VariableName;
         std::string VariableKey;
-        enum class VariableType : uint8_t { Regular, List } Type;
+        bool IsList;
     };
     /**
      * Scratch field descriptor

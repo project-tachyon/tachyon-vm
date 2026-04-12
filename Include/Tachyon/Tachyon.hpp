@@ -19,7 +19,7 @@
  * Configuration option: Pseudo-block support.
  * When enabled, procedures with certain names and structure can be called to make the VM do heavy tasks instead of the project.
  */
-#define TACHYON_CFG_PBLOCK       (1 << 1)
+#define TACHYON_CFG_PBLOCK    (1 << 1)
 
 namespace Tachyon {
 
@@ -113,6 +113,12 @@ namespace Tachyon {
      * @param The function that handles the specific opcode.
      */
     void RegisterEvaluationHandler(std::string_view Opcode, Scratch::EvaluationHandler Handler);
+
+    /**
+     * Renders a sprite only if it's visible.
+     * @param The sprite to render
+     */
+    void RenderSprite(Scratch::ScratchSprite & Sprite);
 
     /**
      * De-initializes SDL3.

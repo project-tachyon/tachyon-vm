@@ -18,9 +18,9 @@ void __hot ScratchSprite::CreateScript(ScratchBlock & Block) {
         .CurrentStatus = ScratchStatus::SCRATCH_END,
         .ControlFlags = 0,
     };
-    this->Scripts.push_back(Script);
-    Script.ReturnStack.reserve(32);
-    Tachyon::ScriptAddReadyQueue(Script);
+    this->Scripts.emplace_back(std::move(Script));
+    this->Scripts.back().ReturnStack.reserve(32);
+    Tachyon::ScriptAddReadyQueue(this->Scripts.back());
 }
 
 void ScratchSprite::CreateScripts(void) {
@@ -35,24 +35,26 @@ void ScratchSprite::CreateScripts(void) {
             .CurrentStatus = ScratchStatus::SCRATCH_END,
             .ControlFlags = 0,
         };
-        this->Scripts.push_back(Script);
-        Script.ReturnStack.reserve(32);
+        this->Scripts.emplace_back(std::move(Script));
+        this->Scripts.back().ReturnStack.reserve(32);
     }
 }
 
-ScratchList * __hot ScratchSprite::GetList(std::string ListKey) {           
+ScratchList * __hot ScratchSprite::GetListFromKey(std::string ListKey) {           
     /* check if it's local */
     auto LocalItem = this->Lists.find(ListKey);
     if (LocalItem != this->Lists.end()) {
         return &LocalItem->second;
     }
 
+    if (this->IsStage() == true) {
+        return nullptr;
+    }
+
     /* if not, maybe it's global */
     
     ScratchSprite * Stage = Tachyon::GetStage();
-    if (unlikely(Stage == nullptr)) {
-        return nullptr;
-    }
+    TachyonAssert(Stage != nullptr);
     auto GlobalItem = Stage->Lists.find(ListKey);
     if (unlikely(GlobalItem == Stage->Lists.end())) {
         return nullptr;
@@ -60,21 +62,77 @@ ScratchList * __hot ScratchSprite::GetList(std::string ListKey) {
     return &GlobalItem->second;
 }
 
-ScratchVariable * __hot ScratchSprite::GetVariable(std::string VarKey) {           
+ScratchVariable * __hot ScratchSprite::GetVariableFromKey(std::string VarKey) {           
     /* check if it's local */
     auto LocalItem = this->Variables.find(VarKey);
-    if (LocalItem == this->Variables.end()) {
-        ScratchSprite * Stage = Tachyon::GetStage();
-        if (unlikely(Stage == nullptr)) {
-            return nullptr;
-        }
-        auto GlobalItem = Stage->Variables.find(VarKey);
-        if (unlikely(GlobalItem == Stage->Variables.end())) {
-            return nullptr;
-        }
-        return &GlobalItem->second;
+    if (LocalItem != this->Variables.end()) {
+        return &LocalItem->second;
     }
-    return &LocalItem->second;
+
+    if (this->IsStage() == true) {
+        return nullptr;
+    }
+
+    /* global or non-existent */
+
+    ScratchSprite * Stage = Tachyon::GetStage();
+    TachyonAssert(Stage != nullptr);
+    
+    auto GlobalItem = Stage->Variables.find(VarKey);
+
+    if (unlikely(GlobalItem == Stage->Variables.end())) {
+        return nullptr;
+    }
+
+    return &GlobalItem->second;
+}
+
+ScratchList * __hot ScratchSprite::GetList(std::string ListName) {           
+    auto LocalItem = this->ListKeyLUT.find(ListName);
+    if (LocalItem != this->ListKeyLUT.end()) {
+        return &this->Lists.at(LocalItem->second);
+    }
+    
+    if (this->IsStage() == true) {
+        return nullptr;
+    }
+
+    /* global or non-existent */
+
+    ScratchSprite * Stage = Tachyon::GetStage();
+    TachyonAssert(Stage != nullptr);
+
+    auto GlobalItem = Stage->ListKeyLUT.find(ListName);
+
+    if (unlikely(GlobalItem == Stage->ListKeyLUT.end())) {
+        return nullptr;
+    }
+
+    return &Stage->Lists.at(GlobalItem->second);
+}
+
+ScratchVariable * __hot ScratchSprite::GetVariable(std::string VarName) {           
+    auto LocalItem = this->VariableKeyLUT.find(VarName);
+    if (LocalItem != this->VariableKeyLUT.end()) {
+        return &this->Variables.at(LocalItem->second);
+    }
+    
+    if (this->IsStage() == true) {
+        return nullptr;
+    }
+
+    /* global or non-existent */
+
+    ScratchSprite * Stage = Tachyon::GetStage();
+    TachyonAssert(Stage != nullptr);
+
+    auto GlobalItem = Stage->VariableKeyLUT.find(VarName);
+
+    if (unlikely(GlobalItem == Stage->VariableKeyLUT.end())) {
+        return nullptr;
+    }
+
+    return &Stage->Variables.at(GlobalItem->second);
 }
 
 int ScratchProject::ParseContents(void) {

@@ -10,7 +10,6 @@
 using namespace Scratch;
 
 void ScratchSprite::ResolveProcedureDefinitions(void) {
-    std::cout << "resolving procedure definitions for " << this->Name << std::endl;
     for(auto & Item : this->ProcedureDefinitions) {
         auto & ProcDef = Item.second;
         ScratchInput Input = ProcDef->GetInput(0);
@@ -33,15 +32,13 @@ void ScratchSprite::ResolveProcedureDefinitions(void) {
     }
 }
 
-static inline ScratchStatus __hot Procedures_Call(ScratchBlock & Block) {
+static ScratchStatus __hot Procedures_Call(ScratchBlock & Block) {
     ScratchMutation & Mutation = Block.GetMutation();
     ScratchSprite & Owner = Block.GetOwnerSprite();
     for (auto & Procedure : Owner.Procedures) {
         if (Procedure.ProcCode == Mutation.ProcCode) {
             ScratchScript * CurrentScript = Tachyon::GetCurrentScript();
-            if (unlikely(CurrentScript == nullptr)) {
-                return ScratchStatus::SCRATCH_END;
-            }
+            TachyonAssert(CurrentScript != nullptr);
             if (Tachyon::GetConfigVM() & TACHYON_CFG_PBLOCK) {
                 if (Tachyon::Pseudo::IsPseudo(Procedure.ProcCode) == true) {
                     /* act as if nothing ever happened */
@@ -54,7 +51,7 @@ static inline ScratchStatus __hot Procedures_Call(ScratchBlock & Block) {
 
             /* bind parameters */
             size_t TotalParams = Procedure.ParametersNames.size();
-            std::unordered_map<std::string, ScratchData> ParamBindings;
+            ProcedureBindings ParamBindings;
             ParamBindings.reserve(TotalParams);
 
             for(size_t i = 0; i < TotalParams; i++) {
@@ -66,12 +63,12 @@ static inline ScratchStatus __hot Procedures_Call(ScratchBlock & Block) {
 
             CurrentScript->ReturnStack.push_back({
                 .ReturnId = Block.GetNextKey(),
-                .RepeatId = std::string(),
+                .RepeatId = {},
                 .RepeatCondition = double(-1),
                 .InsideProcedure = GetControlFlag(*CurrentScript, SCRIPT_INSIDE_PROCEDURE) 
             });
 
-            CurrentScript->ParamBindings.push_back(ParamBindings);
+            CurrentScript->ParamBindings.emplace_back(std::move(ParamBindings));
 
             SetControlFlag(*CurrentScript, (SCRIPT_SHOULD_STAY | SCRIPT_INSIDE_PROCEDURE | SCRIPT_INVALIDATE_BLOCK));
             CurrentScript->CurrentBlockId = ProcBlock->GetNextKey();

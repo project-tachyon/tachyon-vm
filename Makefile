@@ -12,13 +12,13 @@ CPPFLAGS := \
 	-Wredundant-decls \
 	-Wformat \
 	-Wformat-security \
+	-Wno-missing-field-initializers \
 	-I $(SRC)/Include/ \
 	-fno-rtti \
-	-O0 \
-	-msse4.2 \
-	-mavx \
-	-g \
-	-fno-exceptions
+	-fno-exceptions \
+	-O3 \
+	-msse4.1 \
+	-mavx2
 
 LDFLAGS := \
 	-lstdc++ \

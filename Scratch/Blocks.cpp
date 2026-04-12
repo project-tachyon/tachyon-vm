@@ -31,14 +31,14 @@ ScratchData __hot ScratchBlock::GetInputData(size_t InputNum) {
         ScratchData Data;
         if (std::holds_alternative<Field_Variable>(InputValue.Value)) {
             Field_Variable VariableField = std::get<Field_Variable>(InputValue.Value);
-            if (VariableField.Type == Field_Variable::VariableType::Regular) {
-                ScratchVariable * Variable = OwnerSprite.GetVariable(VariableField.VariableKey);
+            if (VariableField.IsList == false) {
+                ScratchVariable * Variable = OwnerSprite.GetVariableFromKey(VariableField.VariableKey);
 
                 TachyonAssert(Variable != nullptr);
 
                 Data = Variable->GetData();
             } else {
-                ScratchList * List = OwnerSprite.GetList(VariableField.VariableKey);
+                ScratchList * List = OwnerSprite.GetListFromKey(VariableField.VariableKey);
 
                 TachyonAssert(List != nullptr);
 
@@ -89,7 +89,7 @@ static inline ScratchShadow ParseShadowType(ondemand::array & InputObject) {
     return ScratchShadow(RawShadow);
 }
 
-static inline ScratchPrimitive ParsePrimitiveType(ondemand::array & InputObject) {
+static ScratchPrimitive ParsePrimitiveType(ondemand::array & InputObject) {
     InputObject.reset();
 
     simdjson::simdjson_result Result = InputObject.at(0);
@@ -98,7 +98,8 @@ static inline ScratchPrimitive ParsePrimitiveType(ondemand::array & InputObject)
     TachyonAssert(Result.get_uint64().get(RawPrimitive) == error_code::SUCCESS);
 
     InputObject.reset();
-    return ScratchPrimitive(RawPrimitive);
+
+    return ScratchPrimitive(RawPrimitive & 0xFF);
 }
 
 static std::variant<Input_Value, std::string> SetupInputValue(ondemand::array & RawArray) {
@@ -108,8 +109,6 @@ static std::variant<Input_Value, std::string> SetupInputValue(ondemand::array & 
         case ScratchPrimitive::INPUT_VAR: {
             Input_Value Value;
             Field_Variable Variable;
-
-            RawArray.reset();
 
             simdjson::simdjson_result Result = RawArray.at(1);
             TachyonAssert(Result.error() == error_code::SUCCESS);
@@ -123,15 +122,18 @@ static std::variant<Input_Value, std::string> SetupInputValue(ondemand::array & 
             
             RawArray.reset();
 
-            Variable.Type = Field_Variable::VariableType::Regular;
+            Variable.IsList = false;
+
+            Value.PrimitiveType = PrimitiveType;
             Value.Value = Variable;
-            break;
+
+            RawArray.reset();
+
+            return Value;
         }
         case ScratchPrimitive::INPUT_LIST: {
             Input_Value Value;
             Field_Variable Variable;
-
-            RawArray.reset();
 
             simdjson::simdjson_result Result = RawArray.at(1);
             TachyonAssert(Result.error() == error_code::SUCCESS);
@@ -145,14 +147,17 @@ static std::variant<Input_Value, std::string> SetupInputValue(ondemand::array & 
 
             RawArray.reset();
 
-            Variable.Type = Field_Variable::VariableType::List;
+            Variable.IsList = true;
+
+            Value.PrimitiveType = PrimitiveType;
             Value.Value = Variable;
-            break;
+
+            RawArray.reset();
+
+            return Value;
         }
         case ScratchPrimitive::INPUT_BROADCAST: {
             std::string BroadcastKey;
-
-            RawArray.reset();
 
             simdjson::simdjson_result Result = RawArray.at(2);
             TachyonAssert(Result.error() == error_code::SUCCESS);
@@ -165,13 +170,14 @@ static std::variant<Input_Value, std::string> SetupInputValue(ondemand::array & 
         default: {
             Input_Value Value;
 
-            RawArray.reset();
-
             simdjson::simdjson_result Result = RawArray.at(1);
-            TachyonAssert(Result.error() == error_code::SUCCESS);
             ondemand::value ValueRaw;
+
+            TachyonAssert(Result.error() == error_code::SUCCESS);
             TachyonAssert(Result.get(ValueRaw) == error_code::SUCCESS);
+
             Value.Value = SanitizeData(ValueRaw);
+            Value.PrimitiveType = PrimitiveType;
 
             RawArray.reset();
 

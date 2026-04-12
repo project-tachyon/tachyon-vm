@@ -74,7 +74,7 @@ void Tachyon::InitializeScheduler(ScratchProject & Project) {
         for(auto & Script : Sprite->Scripts) {
             SchedulerRunQueue.emplace_back(Script);
         }
-        if (unlikely(Sprite->IsStage() == true)) {
+        if (Sprite->IsStage() == true) {
             Stage = Sprite.get();
         }
     }
@@ -84,25 +84,21 @@ void Tachyon::InitializeScheduler(ScratchProject & Project) {
     }
 }
 
-void Tachyon::ScriptAddReadyQueue(ScratchScript Script) {
+void __hot Tachyon::ScriptAddReadyQueue(ScratchScript Script) {
     SchedulerRunQueue.emplace_back(Script);
 }
 
 /**
  * This is where scripts are executed if you couldn't already tell.
- * You damn retard.
  * @param The script to execute
  * @return Status of the script
  */
-static inline ScratchStatus __hot ExecuteScript(ScratchScript & Script) {
+static ScratchStatus __hot ExecuteScript(ScratchScript & Script) {
     while(true) {
         ScratchBlock * Block = Script.Sprite->GetBlockFromId(Script.CurrentBlockId);
-        if (unlikely(Block == nullptr)) {
-            DebugError("WARNING: Invalid block ID: %s\n", Script.CurrentBlockId.c_str());
-            return ScratchStatus::SCRATCH_END;
-        }
+        TachyonAssert(Block != nullptr);
         /* execute block */
-        DebugInfo("opcode: %s\n", Block->GetOpcode().c_str());
+        //DebugInfo("opcode: %s\n", Block->GetOpcode().c_str());
         ScratchStatus Status = Block->Execute();
         if (Status != ScratchStatus::SCRATCH_NEXT) {
             return Status;
@@ -125,45 +121,34 @@ static inline ScratchStatus __hot ExecuteScript(ScratchScript & Script) {
             continue;
         }
         std::string NextId = Block->GetNextKey();
-        if (likely(NextId.empty() == false)) {
+        if (NextId.empty() == false) {
             Script.CurrentBlockId = NextId;
             continue;
         }
         /* we're either done executing, or repeating */
-        if (unlikely(Script.ReturnStack.empty() == true)) {
-            DebugInfo("Done executing.\n");
+        if (Script.ReturnStack.empty() == true) {
             return ScratchStatus::SCRATCH_END;
         }
         Script_StackFrame & CurrentStackFrame = Script.ReturnStack.back();
         /* its possible we're just an ending procedure */
-        if (std::holds_alternative<double>(CurrentStackFrame.RepeatCondition) == true) {
+        if (ShouldRepeatConditionally(CurrentStackFrame) == false) {
             double & RepeatsLeft = std::get<double>(CurrentStackFrame.RepeatCondition);
             if (RepeatsLeft < 0) {
-                if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == false) {
-                    return ScratchStatus::SCRATCH_END;
+                if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == true) {
+                    UnbindParameters(Script);
                 }
-                UnsetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE);
-
                 ScriptReturn(Script);
-                UnbindParameters(Script);
-                continue;
+                return ScriptRecursiveReturn(Script);
             }
             /* repeats should only be below here */
             RepeatsLeft--;
             if (RepeatsLeft < 0) {
                 ScriptReturn(Script);
-                if (Script.CurrentBlockId.empty() == true) {
-                    if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == false) {
-                        return ScratchStatus::SCRATCH_END;
-                    }
-                    UnsetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE);
-                    
-                    ScriptReturn(Script);
-                    UnbindParameters(Script);
-                }
-                continue;
+                /* recursive check because the old logic was kinda shit */
+                return ScriptRecursiveReturn(Script);
             }
             Script.CurrentBlockId = CurrentStackFrame.RepeatId;
+            continue;
         } else {
             ScratchBlock * ConditionalBlock = std::get<ScratchBlock *>(CurrentStackFrame.RepeatCondition);
             TachyonAssert(ConditionalBlock != nullptr);
@@ -171,67 +156,56 @@ static inline ScratchStatus __hot ExecuteScript(ScratchScript & Script) {
             TachyonAssert(EvalResult.Type == ScratchData::Type::Boolean);
             if (EvalResult.Boolean == true) {
                 Script.CurrentBlockId = CurrentStackFrame.RepeatId;
-            } else {
-                ScriptReturn(Script);
-                if (Script.CurrentBlockId.empty() == true) {
-                    if (GetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE) == false) {
-                        return ScratchStatus::SCRATCH_END;
-                    }
-                    UnsetControlFlag(Script, SCRIPT_INSIDE_PROCEDURE);
-                    ScriptReturn(Script);
-                }
                 continue;
             }
+            ScriptReturn(Script);
+            /* recursive check because the old logic was kinda shit */
+            return ScriptRecursiveReturn(Script);
         }
     }
     __unreachable;
 }
 
-// static inline void DumpScriptInformation(ScratchScript & Script) {
-//     DebugInfo("---- SCRIPT INFORMATION DUMP ----\n");
-//     DebugInfo("Owner sprite name: %s\n", Script.Sprite->GetName().data());
-//     DebugInfo("First block ID: %s\n", Script.FirstBlockId.c_str());
-//     DebugInfo("Return stack total pending calls: %d\n", Script.ReturnStack.size());
-//     DebugInfo("Script CFLAGS: 0x%02x\n", Script.ControlFlags);
-//     DebugInfo("Script stack backtrace:\n");
-//     for(const Script_StackFrame & StackFrame : Script.ReturnStack) {
-//         DebugInfo("\tReturn block ID: %s\n", StackFrame.ReturnId.c_str());
-//         DebugInfo("\tWas in procedure? %s\n", StackFrame.InsideProcedure ? "true" : "false");
-//         if (StackFrame.RepeatId.empty() == false) {
-//             DebugInfo("\tRepeat start block ID: %s\n", StackFrame.RepeatId.c_str());
+static inline void DumpScriptInformation(ScratchScript & Script) {
+    DebugInfo("---- SCRIPT INFORMATION DUMP ----\n");
+    DebugInfo("Owner sprite name: %s\n", Script.Sprite->GetName().data());
+    DebugInfo("First block ID: %s\n", Script.FirstBlockId.c_str());
+    DebugInfo("Return stack total pending calls: %d\n", Script.ReturnStack.size());
+    DebugInfo("Script CFLAGS: 0x%02x\n", Script.ControlFlags);
+    DebugInfo("Script stack backtrace (top = most recent frame):\n");
+    for(int i = Script.ReturnStack.size() - 1; i >= 0; i--) {
+        const Script_StackFrame & StackFrame = Script.ReturnStack.at(i);
+        DebugInfo("Frame #%lu:\n", i);
+        DebugInfo("\tReturn block ID: %s\n", StackFrame.ReturnId.c_str());
+        DebugInfo("\tWas in procedure? %s\n", StackFrame.InsideProcedure ? "true" : "false");
+        if (StackFrame.RepeatId.empty() == false) {
+            DebugInfo("\tRepeat start block ID: %s\n", StackFrame.RepeatId.c_str());
+            if (std::holds_alternative<double>(StackFrame.RepeatCondition) == true) {
+                /* repeat times */
+                const double RepeatsLeft = std::get<double>(StackFrame.RepeatCondition);
+                DebugInfo("\tTotal repeats left: %.0f\n", RepeatsLeft + 1);
+            } else {
+                /* repeat condition */
+                ScratchBlock * ConditionBlock = std::get<ScratchBlock *>(StackFrame.RepeatCondition);
+                TachyonAssert(ConditionBlock != nullptr);
+                DebugInfo("\tRepeat condition block ID: %s\n", ConditionBlock->GetKey().c_str());
+            }
+        }
+    }
+}
 
-//             if (std::holds_alternative<double>(StackFrame.RepeatCondition) == true) {
-//                 /* repeat times */
-//                 const double RepeatsLeft = std::get<double>(StackFrame.RepeatCondition);
-//                 DebugInfo("\tTotal repeats left: %d\n", RepeatsLeft + 1);
-//             } else {
-//                 /* repeat condition */
-//                 ScratchBlock * ConditionBlock = std::get<ScratchBlock *>(StackFrame.RepeatCondition);
-//                 TachyonAssert(ConditionBlock != nullptr);
-//                 DebugInfo("\tRepeat condition block ID: %s\n", ConditionBlock->GetKey().c_str());
-//             }
-//         }
-//     }
-// }
-
-static inline ScratchScript * GetNextScript(void) {
+static inline ScratchScript * __hot GetNextScript(void) {
     if (likely(SchedulerRunQueue.empty() == false)) {
-        return &SchedulerRunQueue.at(0);
+        return &SchedulerRunQueue.front();
     }
     return nullptr;
 } 
 
 bool __hot Tachyon::Step(void) {
-    if (unlikely(SchedulerRunQueue.empty() && SchedulerYieldQueue.empty())) {
-        /* exit */
-        std::cout << "no more scripts to run. exiting..." << std::endl;
-        return true;
-    }
     /* NOTE: waking up scripts isnt implemeneted, so they'll be sleeping beauty for the time being */
     CurrentScript = GetNextScript();
     if (unlikely(CurrentScript == nullptr)) {
-        DebugWarn("HELLO\n");
-        return false;
+        return true;
     }
     ScratchStatus Status = ExecuteScript(*CurrentScript);
     if (Status == ScratchStatus::SCRATCH_WAIT || Status == ScratchStatus::SCRATCH_WAIT_UNTIL || Status == ScratchStatus::SCRATCH_PAUSE) {
@@ -240,6 +214,7 @@ bool __hot Tachyon::Step(void) {
         SchedulerYieldQueue.emplace_back(*CurrentScript);
         SchedulerRunQueue.erase(SchedulerRunQueue.begin());
     } else if (Status == ScratchStatus::SCRATCH_END) {
+        DumpScriptInformation(*CurrentScript);
         SchedulerRunQueue.erase(SchedulerRunQueue.begin());
     }
     return false;

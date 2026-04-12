@@ -5,166 +5,193 @@
 #include <Scratch/Operator.hpp>
 #include <Tachyon/Tachyon.hpp>
 #include <Compiler.hpp>
+#include <random>
 #include <cmath>
 #include <limits>
 
 using namespace Scratch;
 
-static inline __hot ScratchData Operator_Add(ScratchBlock & Block) {
+static ScratchData __hot Operator_Add(ScratchBlock & Block) {
     ScratchData Operand1_Data = Block.GetInputData(0);
     ScratchData Operand2_Data = Block.GetInputData(1);
 
-    double Result = (Operand1_Data.Type == ScratchData::Type::Number ? Operand1_Data.Number : 0) + (Operand2_Data.Type == ScratchData::Type::Number ? Operand2_Data.Number : 0);
-
-    return Result;
+    return Operand1_Data.AsDouble() + Operand2_Data.AsDouble();
 }
 
-static inline __hot ScratchData Operator_Modulo(ScratchBlock & Block) {
+static ScratchData __hot Operator_Subtract(ScratchBlock & Block) {
     ScratchData Operand1_Data = Block.GetInputData(0);
     ScratchData Operand2_Data = Block.GetInputData(1);
 
-    double Result = std::fmod(
-        (Operand1_Data.Type == ScratchData::Type::Number ? Operand1_Data.Number : 0),
-        (Operand2_Data.Type == ScratchData::Type::Number ? Operand2_Data.Number : 0)
+    return Operand1_Data.AsDouble() - Operand2_Data.AsDouble();
+}
+
+static ScratchData __hot Operator_Modulo(ScratchBlock & Block) {
+    ScratchData Operand1_Data = Block.GetInputData(0);
+    ScratchData Operand2_Data = Block.GetInputData(1);
+
+    return std::fmod(
+        (Operand1_Data.AsDouble()),
+        (Operand2_Data.AsDouble())
     );
-
-    return Result;
 }
 
-static inline Operator::MathOperation __hot GetMathOperation(ScratchField & Field) {
-    std::string Operation = std::get<std::string>(Field.Field);
-
-    if (Operation == "floor") return Operator::MathOperation::MathFloor;
-
-    return Operator::MathOperation::MathInvalid;
-} 
-
-static inline __hot ScratchData Operator_MathOp(ScratchBlock & Block) {
-    ScratchField Field = Block.GetField(0);
+static ScratchData __hot Operator_MathOp(ScratchBlock & Block) {
+    const ScratchField Field = Block.GetField(0);
 
     TachyonAssert(Field.Type == ScratchField::FieldType::StringField);
 
-    Operator::MathOperation Type = GetMathOperation(Field);
+    const std::string Operation = std::get<std::string>(Field.Field);
 
-    switch(Type) {
-        case Operator::MathOperation::MathFloor: {
-            ScratchData Data = Block.GetInputData(0);
-            if (Data.Type != ScratchData::Type::Number) {
-                return double(0);
-            }
-            return std::floor(Data.Number);
-        }
-        case Operator::MathOperation::MathInvalid: {
-            TachyonUnimplemented("Unknown math operation: %s\n", std::get<std::string>(Field.Field).c_str());
-        }
+    if (Operation == "floor") {
+        ScratchData Data = Block.GetInputData(0);
+        return std::floor(Data.AsDouble());
     }
-    __unreachable;
+
+    DebugError("Invalid math operation: %s\n", Operation.c_str());
+
+    return ScratchData(double(0));
 }
 
-static inline __hot ScratchData Operator_Divide(ScratchBlock & Block) {
-    ScratchData Num1 = Block.GetInputData(0);
-    ScratchData Num2 = Block.GetInputData(1);
+static ScratchData __hot Operator_Divide(ScratchBlock & Block) {
+    ScratchData Left = Block.GetInputData(0);
+    ScratchData Right = Block.GetInputData(1);
 
-    if (Num2.Type != ScratchData::Type::Number) {
-        return std::numeric_limits<double>::infinity();
+    const double Operand1 = Left.AsDouble();
+    const double Operand2 = Right.AsDouble();
+
+    if (Operand2 == 0) {
+        if (Operand1 == 0) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        return (Operand1 < 0) ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
     }
-    double Result = (Num1.Type == ScratchData::Type::Number ? Num1.Number : 0) / Num2.Number;
-    return Result;
+    return double(Operand1 / Operand2);
 }
 
-static inline __hot ScratchData Operator_Join(ScratchBlock & Block) {
+static ScratchData __hot Operator_Multiply(ScratchBlock & Block) {
+    ScratchData Left = Block.GetInputData(0);
+    ScratchData Right = Block.GetInputData(1);
+
+    const double Operand1 = Left.AsDouble();
+    const double Operand2 = Right.AsDouble();
+
+    return double(Operand1 * Operand2);
+}
+
+static ScratchData __hot Operator_Random(ScratchBlock & Block) {
+    ScratchData Left = Block.GetInputData(0);
+    ScratchData Right = Block.GetInputData(1);
+
+    const double LeftNum = Left.AsDouble();
+    const double RightNum = Right.AsDouble();
+
+    if (LeftNum == RightNum) { return double(LeftNum); }
+
+    const double Low = std::min(LeftNum, RightNum);
+    const double Max = std::max(LeftNum, RightNum);
+
+    static std::mt19937 Generator(std::random_device{ /* empty */ }());
+    std::uniform_real_distribution<double> Dist(Low, Max);
+
+    return double(Dist(Generator));
+}
+
+static ScratchData __hot Operator_Join(ScratchBlock & Block) {
     ScratchData Data1 = Block.GetInputData(0);
     ScratchData Data2 = Block.GetInputData(1);
 
-    std::string String1 = Data2String(Data1);
-    std::string String2 = Data2String(Data2);
+    const std::string String1 = Data1.AsString();
+    const std::string String2 = Data2.AsString();
 
     return String1 + String2;
 }
 
-static inline __hot ScratchData Operator_Equals(ScratchBlock & Block) {
+static ScratchData __hot Operator_Equals(ScratchBlock & Block) {
     ScratchData Data1 = Block.GetInputData(0);
     ScratchData Data2 = Block.GetInputData(1);
 
-    std::string String1 = Data2String(Data1);
-    std::string String2 = Data2String(Data2);
+    const std::string String1 = Data1.AsString();
+    const std::string String2 = Data2.AsString();
 
     return bool(String1 == String2);
 }
 
-static inline __hot ScratchData Operator_Not(ScratchBlock & Block) {
-    ScratchInput Condition = Block.GetInput(0);
-    if (unlikely(Condition.Type != ScratchInput::InputType::ValueInput)) {
-        DebugError("Invalid input for not operator!\n");
-        return false;
-    }
+static ScratchData __hot Operator_Not(ScratchBlock & Block) {
+    const ScratchInput Condition = Block.GetInput(0);
+    TachyonAssert(Condition.Type == ScratchInput::InputType::ValueInput);
+
     std::string ConditionBlockId = std::get<std::string>(Condition.Input);
 
     ScratchSprite & Owner = Block.GetOwnerSprite();
     ScratchBlock * Reporter = Owner.GetBlockFromId(ConditionBlockId);
 
-    if (unlikely(Reporter == nullptr)) {
-        DebugError("Invalid reporter block for not operator\n");
-        return false;
-    }
+    TachyonAssert(Reporter != nullptr);
 
-    ScratchData Evaluation = Reporter->Evaluate();
+    const ScratchData Evaluation = Reporter->Evaluate();
     return bool(Evaluation.Boolean == false);
 }
 
-static inline __hot ScratchData Operator_Length(ScratchBlock & Block) {
-    ScratchData Data = Block.GetInputData(0);
-    switch(Data.Type) {
-        case ScratchData::Type::String: {
-            return double(Data.String.length());
-            break;
-        }
-        case ScratchData::Type::Boolean: {
-            return double(Data.Boolean ? 4 : 5);                                     
-        }
-        case ScratchData::Type::Number: {
-            return double(std::to_string(Data.Number).length());
-        }
-    }
-    __unreachable;
+static ScratchData __hot Operator_Or(ScratchBlock & Block) {
+    const ScratchInput ConditionA = Block.GetInput(0);
+    const ScratchInput ConditionB = Block.GetInput(1);
+    
+    TachyonAssert(ConditionA.Type == ScratchInput::InputType::ValueInput);
+    TachyonAssert(ConditionB.Type == ScratchInput::InputType::ValueInput);
+
+    const std::string ConditionA_BlockId = std::get<std::string>(ConditionA.Input);
+    const std::string ConditionB_BlockId = std::get<std::string>(ConditionB.Input);
+
+    ScratchSprite & Owner = Block.GetOwnerSprite();
+    ScratchBlock * ReporterA = Owner.GetBlockFromId(ConditionA_BlockId);
+    ScratchBlock * ReporterB = Owner.GetBlockFromId(ConditionB_BlockId);
+
+    TachyonAssert(ReporterA != nullptr);
+    TachyonAssert(ReporterB != nullptr);
+
+    const ScratchData EvaluationA = ReporterA->Evaluate();
+    const ScratchData EvaluationB = ReporterB->Evaluate();
+
+    return bool(EvaluationA.Boolean == true || EvaluationB.Boolean == true);
 }
 
-static inline __hot ScratchData Operator_LetterOf(ScratchBlock & Block) {
-    ScratchData Index = Block.GetInputData(0);
-    ScratchData String = Block.GetInputData(1);
+static ScratchData __hot Operator_Length(ScratchBlock & Block) {
+    ScratchData Data = Block.GetInputData(0);
+    return double(Data.AsString().length());
+}
 
-    if (Index.Type != ScratchData::Type::Number) {
+static ScratchData __hot Operator_LetterOf(ScratchBlock & Block) {
+    ScratchData IndexInput = Block.GetInputData(0);
+    ScratchData Input = Block.GetInputData(1);
+
+    if (unlikely(IndexInput.Type != ScratchData::Type::Number)) {
         return "";
     }
 
-    std::string RealString;
+    const double Index = IndexInput.AsDouble();
+    const std::string RealString = Input.AsString();
 
-    switch(String.Type) {
-        case ScratchData::Type::String: {
-            RealString = String.String;
-            break;
-        }
-        case ScratchData::Type::Boolean: {
-            RealString = String.Boolean ? "true" : "false";                                     
-            break;
-        }
-        case ScratchData::Type::Number: {
-            RealString = std::to_string(String.Number);
-            break;
-        }
+    if (unlikely(Index < 0 || RealString.length() < Index)) {
+        return "";
     }
-    std::string Character(1, RealString[Index.Number]);
+
+    std::string Character(1, RealString[Index - 1]);
     return Character;
 }
 
 void Operator::RegisterAll(void) {
+    /* arithmetic related */
     Tachyon::RegisterEvaluationHandler("operator_add", Operator_Add);
-    Tachyon::RegisterEvaluationHandler("operator_join", Operator_Join);
+    Tachyon::RegisterEvaluationHandler("operator_subtract", Operator_Subtract);
     Tachyon::RegisterEvaluationHandler("operator_equals", Operator_Equals);
+    Tachyon::RegisterEvaluationHandler("operator_or", Operator_Or);
     Tachyon::RegisterEvaluationHandler("operator_not", Operator_Not);
-    Tachyon::RegisterEvaluationHandler("operator_length", Operator_Length);
-    Tachyon::RegisterEvaluationHandler("operator_letter_of", Operator_LetterOf);
     Tachyon::RegisterEvaluationHandler("operator_mod", Operator_Modulo);
     Tachyon::RegisterEvaluationHandler("operator_mathop", Operator_MathOp);
     Tachyon::RegisterEvaluationHandler("operator_divide", Operator_Divide);
+    Tachyon::RegisterEvaluationHandler("operator_multiply", Operator_Multiply);
+    Tachyon::RegisterEvaluationHandler("operator_random", Operator_Random);
+    /* string manipulation */
+    Tachyon::RegisterEvaluationHandler("operator_length", Operator_Length);
+    Tachyon::RegisterEvaluationHandler("operator_letter_of", Operator_LetterOf);
+    Tachyon::RegisterEvaluationHandler("operator_join", Operator_Join);
 }

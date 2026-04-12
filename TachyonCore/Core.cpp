@@ -1,4 +1,3 @@
-#include "Tachyon/Debug.hpp"
 #include <Scratch/ControlFlow.hpp>
 #include <Scratch/Reporters.hpp>
 #include <Scratch/Sensing.hpp>

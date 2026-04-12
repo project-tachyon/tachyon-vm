@@ -6,14 +6,13 @@
 #include <Scratch/Blocks.hpp>
 #include <Tachyon/Tachyon.hpp>
 #include <string>
-#include <unordered_map>
 
 using namespace Scratch;
 
 static inline ScratchData __hot GetBindedParameter(std::string ParamName, ScratchScript & CurrentScript) {
     TachyonAssert(CurrentScript.ParamBindings.empty() == false);
 
-    std::unordered_map<std::string, ScratchData> Map = CurrentScript.ParamBindings.back();
+    ProcedureBindings Map = CurrentScript.ParamBindings.back();
 
     auto Item = Map.find(ParamName);
 
@@ -24,21 +23,19 @@ static inline ScratchData __hot GetBindedParameter(std::string ParamName, Scratc
     return Item->second;
 }
 
-static inline __hot ScratchData Reporter_Boolean(ScratchBlock & Block) {
+static ScratchData __hot Reporter_Boolean(ScratchBlock & Block) {
     const ScratchField Field = Block.GetField(0);
     std::string ParamName = std::get<std::string>(Field.Field);
     if (ParamName == "Is Tachyon?") {
         return true;
     }
-    ScratchData Return = GetBindedParameter(ParamName, *Tachyon::GetCurrentScript());
-    return Return;
+    return GetBindedParameter(ParamName, *Tachyon::GetCurrentScript());
 }
 
-static inline __hot ScratchData Reporter_StringNum(ScratchBlock & Block) {
+static __hot ScratchData Reporter_StringNum(ScratchBlock & Block) {
     const ScratchField Field = Block.GetField(0);
     std::string ParamName = std::get<std::string>(Field.Field);
-    ScratchData Return = GetBindedParameter(ParamName, *Tachyon::GetCurrentScript());
-    return Return;
+    return GetBindedParameter(ParamName, *Tachyon::GetCurrentScript());
 }
 
 void Reporters::RegisterAll(void) {

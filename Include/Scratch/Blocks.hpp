@@ -125,7 +125,7 @@ namespace Scratch {
                         this->ParseInput(InputKey, InputArray)
                     );
                 }
-                if (unlikely(this->Inputs.empty() == false)) {
+                if (this->Inputs.empty() == false) {
                     /* sort inputs */
                     std::sort(this->Inputs.begin(), this->Inputs.end(), [](const ScratchInput & A, const ScratchInput & B) {
                         return A.Type < B.Type;
@@ -161,7 +161,7 @@ namespace Scratch {
              * Gets the block's opcode.
              * @return The block's opcode.
              */
-            inline std::string & GetOpcode(void) {
+            constexpr std::string & GetOpcode(void) {
                 return this->Opcode;
             }
 
@@ -169,7 +169,7 @@ namespace Scratch {
              * Gets the next block's key.
              * @return The next block's key.
              */
-            inline std::string & GetNextKey(void) {
+            constexpr std::string & __hot GetNextKey(void) {
                 return this->NextBlock_Key;
             }
 
@@ -177,7 +177,7 @@ namespace Scratch {
              * Gets the parent block's key.
              * @return The parent block's key.
              */
-            inline std::string & GetParentKey(void) {
+            constexpr std::string & __hot GetParentKey(void) {
                 return this->ParentBlock_Key;
             }
 
@@ -185,7 +185,7 @@ namespace Scratch {
              * Gets the parent block's key.
              * @return The parent block's key.
              */
-            inline std::string & GetKey(void) {
+            constexpr std::string & __hot GetKey(void) {
                 return this->BlockKey;
             }
 
@@ -193,7 +193,7 @@ namespace Scratch {
              * Checks if the block is a procedure definition.
              * @return True if it's a procedure definition, false if otherwise.
              */
-            inline bool IsProcedureDef(void) {
+            constexpr bool IsProcedureDef(void) {
                 return this->ProcedureDefinition;
             }
 
@@ -201,7 +201,7 @@ namespace Scratch {
              * Checks if the block is a procedure definition.
              * @return True if it's a procedure definition, false if otherwise.
              */
-            inline bool IsProcedurePrototype(void) {
+            constexpr bool IsProcedurePrototype(void) {
                 return this->ProcedurePrototype;
             }
 
@@ -209,7 +209,7 @@ namespace Scratch {
              * Checks if the block is a procedure definition.
              * @return True if it's a procedure definition, false if otherwise.
              */
-            inline bool IsProcedureCall(void) {
+            constexpr bool IsProcedureCall(void) {
                 return this->ProcedureCall;
             }
 
@@ -217,7 +217,7 @@ namespace Scratch {
              * Checks if the block is an argument reporter.
              * @return True if it's an argument reporter, false if otherwise.
              */
-            inline bool IsArgumentReporter(void) {
+            constexpr bool IsArgumentReporter(void) {
                 return this->ArgumentReporter;
             }
             
@@ -225,28 +225,28 @@ namespace Scratch {
              * Executes the current block.
              */
             inline ScratchStatus __hot Execute(void) {
-                if (unlikely(this->Handler == nullptr)) {
-                    std::cerr << "WARNING: Invalid opcode: " << this->Opcode << std::endl;
-                    return ScratchStatus::SCRATCH_END;
+                if (likely(this->Handler)) {
+                    return this->Handler(*this);
                 }
-                return this->Handler(*this);
+                DebugError("Invalid opcode: %s\n", this->Opcode.c_str());
+                return ScratchStatus::SCRATCH_END;
             }
 
             /**
              * Executes and returns the block's result.
              */
             inline ScratchData __hot Evaluate(void) {
-                if (unlikely(this->ReporterHandler == nullptr)) {
-                    std::cerr << "WARNING: No reporter handler registered for " << this->Opcode << std::endl;
-                    return ScratchData(double(0));
+                if (likely(this->ReporterHandler)) {
+                    return this->ReporterHandler(*this);
                 }
-                return this->ReporterHandler(*this);
+                DebugWarn("Unknown reporter: %s\n", this->Opcode.c_str());
+                return {};
             }
 
             /**
              * Gets the block's mutation (if it exists).
              */
-            inline ScratchMutation & __hot GetMutation(void) {
+            constexpr ScratchMutation & __hot GetMutation(void) {
                 return this->Mutation.value();
             }
 

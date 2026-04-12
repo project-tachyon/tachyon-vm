@@ -6,7 +6,7 @@
 
 using namespace Scratch;
 
-static inline ScratchStatus Looks_Say(ScratchBlock & Block) {
+static ScratchStatus Looks_Say(ScratchBlock & Block) {
     ScratchData Data = Block.GetInputData(0);
     std::cout << "looks_say: " << Data << std::endl;
     return ScratchStatus::SCRATCH_NEXT;

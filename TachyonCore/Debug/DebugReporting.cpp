@@ -2,7 +2,7 @@
 #include <cstdarg>
 #include <cstdio>
 
-void Debug::Report(const char * Fmt, ...) {
+void __hot Debug::Report(const char * Fmt, ...) {
 	va_list args;
 	va_start(args, Fmt);
 	vprintf(Fmt, args);

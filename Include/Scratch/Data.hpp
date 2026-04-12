@@ -5,7 +5,6 @@
 #include <Lib/SIMDJson.h>
 #include <charconv>
 #include <cmath>
-#include <iomanip>
 #include <limits>
 #include <string_view>
 #include <string>
@@ -120,20 +119,47 @@ namespace Scratch {
             return *this;
         }
 
-        friend std::ostream & operator << (std::ostream & Stream, const ScratchData & Self) {
-            switch(Self.Type) {
+        /* value -> string conversion */
+        std::string __hot AsString(void) {
+            switch(this->Type) {
                 case ScratchData::Type::String: {
-                    Stream << Self.String;
-                    break;
-                }
-                case ScratchData::Type::Number: {
-                    Stream << std::fixed << std::setprecision(0) << Self.Number;
-                    break;
+                    return this->String;
                 }
                 case ScratchData::Type::Boolean: {
-                    Stream << (Self.Boolean == true ? "true" : "false");
+                    return this->Boolean ? "true" : "false";
+                }
+                case ScratchData::Type::Number: {
+                    if (std::isinf(this->Number)) {
+                        return this->Number < 0 ? "-Infinity" : "Infinity";
+                    } else if (std::isnan(this->Number)) {
+                        return "NaN";
+                    }
+                    char Buffer[64];
+                    std::to_chars_result Result = std::to_chars(Buffer, Buffer + sizeof(Buffer), this->Number, std::chars_format::fixed);
+                    return std::string(Buffer, Result.ptr);
                 }
             }
+            __unreachable;
+        }
+
+        /* value -> double conversion */
+        double __hot AsDouble(void) {
+            switch(this->Type) {
+                case ScratchData::Type::String: {
+                    return double(0);
+                }
+                case ScratchData::Type::Boolean: {
+                    return this->Boolean ? 1 : 0;
+                }
+                case ScratchData::Type::Number: {
+                    return this->Number;
+                }
+            }
+            __unreachable;
+        }
+
+        friend std::ostream & operator << (std::ostream & Stream, ScratchData & Self) {
+            Stream << Self.AsString();
             return Stream;
         }
 
@@ -147,21 +173,21 @@ namespace Scratch {
     } ScratchData;
    
     typedef struct {
-        ScratchData data;
-        std::errc ec;
+        const ScratchData data;
+        const std::errc ec;
     } Snum2DataResult;
 
     inline Snum2DataResult __hot StringNum2ScratchData(std::string_view String) {
         if (unlikely(String.empty() == true)) {
-            return { ScratchData(double(0)), std::errc::invalid_argument };
+            return { ScratchData(), std::errc::invalid_argument };
         }
-        /* remove whitespace */
+        /* remove whitespace in front */
         while(String[0] == ' ' && String.size() > 1) String.remove_prefix(1);
 
         if (unlikely(String.empty() == true)) {
-            return { ScratchData(double(0)), std::errc::invalid_argument };
+            return { ScratchData(), std::errc::invalid_argument };
         }
-
+        /* remove whitespace in back */
         while(String[String.length() - 1] == ' ' && String.size() > 1) String.remove_suffix(1);
 
         if (String == "Infinity" || String == "+Infinity") {
@@ -198,7 +224,7 @@ namespace Scratch {
                 std::from_chars_result Result = std::from_chars(String.begin(), String.end(), NonDecConversion, RadixModifier);
                 if (Result.ec == std::errc::invalid_argument) {
                     /* bad num */
-                    return { ScratchData(double(0)), std::errc::invalid_argument };
+                    return { ScratchData(), std::errc::invalid_argument };
                 } else if (Result.ec == std::errc::result_out_of_range) {
                     /* other possible result could be out of range (infinity for scratch) */
                     return { ScratchData(std::numeric_limits<double>::infinity()), std::errc() };
@@ -208,17 +234,17 @@ namespace Scratch {
         }
 SkipChecks:
         if (IS_INVALID_BASE10(String[String.length() - 1]) == true) {
-            return { ScratchData(double(0)), std::errc::invalid_argument };
+            return { ScratchData(), std::errc::invalid_argument };
         }
         bool PastEuler = false;
         for(size_t i = 0; i < String.length(); i++) {
             const char c = String[i];
             if (IS_VALID_BASE10(c) == false) {
-                return { ScratchData(double(0)), std::errc::invalid_argument };
+                return { ScratchData(), std::errc::invalid_argument };
             }
             if (PastEuler) {
                 if (c == '.') {
-                    return { ScratchData(double(0)), std::errc::invalid_argument };
+                    return { ScratchData(), std::errc::invalid_argument };
                 }
             }
             if (c == 'e' || c == 'E') {
@@ -228,27 +254,15 @@ SkipChecks:
         double ConvertedBase10;
         std::from_chars_result Result = std::from_chars(String.begin(), String.end(), ConvertedBase10);
         if (Result.ec == std::errc::invalid_argument) {
-            return { ScratchData(double(0)), std::errc::invalid_argument };
+            return { ScratchData(), std::errc::invalid_argument };
         } else if (Result.ec == std::errc::result_out_of_range) {
             return { ScratchData((String[0] == '-') ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity()), std::errc() };
         }
         /* could be nan or infinity */
         if (unlikely(std::isnan(ConvertedBase10) == true)) {
-            return { ScratchData("NaN"), std::errc() };
+            return { std::numeric_limits<double>::quiet_NaN(), std::errc() };
         }
         return { ScratchData(ConvertedBase10), std::errc() };
-    }
-
-    inline const std::string __hot Data2String(ScratchData & Data) {
-        if (Data.Type == ScratchData::Type::String) {
-            return Data.String;
-        } else if (Data.Type == ScratchData::Type::Number) {
-            /* TODO: set to low precision somehow */
-            return std::to_string(Data.Number);
-        } else {
-            return (Data.Boolean == true ? "true" : "false");
-        }
-        __unreachable;
     }
 
     inline bool __hot StringIsNumber(std::string_view String) {
@@ -259,7 +273,7 @@ SkipChecks:
         return true;
     }
 
-    inline ScratchData __hot SanitizeData(ondemand::value VariableData) {
+    static ScratchData __hot SanitizeData(ondemand::value VariableData) {
         simdjson::fallback::ondemand::json_type ValueType;
         TachyonAssert(VariableData.type().get(ValueType) == error_code::SUCCESS);
         switch(ValueType) {
@@ -300,17 +314,17 @@ SkipChecks:
                 }
             }
             default: {
-                return ScratchData(double(0));
+                return double(0);
             }
         }
     }
 
     class ScratchVariable_Base {
         public:
-            inline std::string & GetName(void) {
+            constexpr std::string & GetName(void) {
                 return this->Name;
             }
-            inline bool IsPublic(void) {
+            constexpr bool IsPublic(void) {
                 return this->Public;
             }
         protected:
@@ -318,7 +332,7 @@ SkipChecks:
             bool Public;
     };
 
-    class ScratchVariable : ScratchVariable_Base {
+    class ScratchVariable : public ScratchVariable_Base {
         public:
             ScratchVariable(ondemand::array VariableData, const bool IsPublic) {
                 /* VariableData[0] = list name, VariableData[1] = actual data */
@@ -338,17 +352,17 @@ SkipChecks:
                 this->Public = IsPublic;
             }
 
-            inline void __hot SetData(ScratchData & NewData) {
+            inline void __hot SetData(ScratchData && NewData) {
                 this->Data = NewData;
             }
-            inline const ScratchData __hot GetData(void) {
+            constexpr ScratchData & __hot GetData(void) {
                 return Data;
             }
         private:
             ScratchData Data;
     };
 
-    class ScratchList : ScratchVariable_Base {
+    class ScratchList : public ScratchVariable_Base {
         public:
             ScratchList (ondemand::array ListData, const bool IsPublic) {
                 /* same applies for ScratchList as it does for ScratchVariable; 
@@ -372,60 +386,89 @@ SkipChecks:
 
                 ListData.reset();
 
-                if (this->TotalItems >= 200000) {
-                    DebugWarn("List \"%s\" goes over 200,000 items; memory usage is bound to increase.\n", this->Name.c_str());
-                    DebugInfo("To reduce memory usage, consider using pseudo-blocks to create a less memory-expensive buffer (if the list ONLY has numbers values under 256).\n");
+                if (this->TotalItems > 200000) {
+                    DebugWarn("List \"%s\" goes over 200,000 items; memory usage is bound to increase. To reduce memory usage, consider using pseudo-blocks to create a less memory-expensive buffer (if the list consists of number values under 256).\n", this->Name.c_str());
                 }
-                this->DitchCache = false;
+                this->LazyLoad = true;
                 this->Public = IsPublic;
+                this->Size = this->TotalItems;
             }
 
-            inline void __hot SwitchToBuffer(void) {
-                if (std::holds_alternative<uint8_t *>(this->Elements)) {
+            void __hot SwitchToBuffer(void) {
+                if (unlikely(std::holds_alternative<uint8_t *>(this->Elements) == true)) {
                     /* you're already a buffer pal */
                     return;
                 }
 
-                size_t Index = 0;
-                uint8_t * NewBuffer = new uint8_t(this->TotalItems);
-                std::vector<ScratchData> & Data = std::get<std::vector<ScratchData>>(this->Elements);
-
-                for(auto & Item : Data) {
-                    if (unlikely(Item.Type == ScratchData::Type::Number)) {
-                        DebugError("Failed to load buffer. The list NEEDS to only have numbers, and they can't be greater than 256.\n");
-                        delete NewBuffer;
-                        return;
-                    }
-                    uint8_t Byte(Item.Number);
-                    NewBuffer[Index++] = Byte;
+                if (unlikely(this->TotalItems == 0)) {
+                    DebugError("Please use this function on a populated list.\n");
+                    return;
                 }
 
+                uint8_t * NewBuffer = new (std::nothrow) uint8_t[this->TotalItems];
+
+                if (unlikely(NewBuffer == nullptr)) {
+                    DebugError("Failed to allocate UINT8 buffer for \"%s\"\n", this->Name.c_str());
+                    return;
+                }
+
+                std::vector<ScratchData> & Cache = std::get<std::vector<ScratchData>>(this->Elements);
+
+                ondemand::parser JsonParser;
+                simdjson::simdjson_result DataDoc = JsonParser.iterate(this->ListJson);
+                TachyonAssert(DataDoc.error() == error_code::SUCCESS);
+                ondemand::array DataArray;
+                TachyonAssert(DataDoc.get_array().get(DataArray) == error_code::SUCCESS);
+
+                size_t i = 0;
+                for(auto Value : DataArray) {
+                    ondemand::value RawData;
+                    TachyonAssert(Value.get(RawData) == error_code::SUCCESS);
+                
+                    ScratchData Item = SanitizeData(RawData);
+
+                    if (unlikely(Item.Type != ScratchData::Type::Number || Item.Number > 255)) {
+                        DebugError("Failed to load buffer \"%s\": The list NEEDS to only have numbers, and they can't be greater than 255.\n", this->Name.c_str());
+                        delete[] NewBuffer;
+                        return;
+                    }
+
+                    uint8_t Byte(Item.Number);
+                    NewBuffer[i] = Byte;
+                    i++;
+                }
                 /* bye bye vector */
-                Data.clear();
+                Cache.clear();
                 this->Elements = NewBuffer;
-                this->DitchCache = true;
-                DebugInfo("Buffer %s is ready for use\n", this->Name.c_str());
+                this->LazyLoad = false;
+                DebugInfo("Buffer \"%s\" is ready for use.\n", this->Name.c_str());
             }
 
-            inline void __hot ClearElements(void) {
+            void __hot ClearElements(void) {
                 if (std::holds_alternative<std::vector<ScratchData>>(this->Elements)) {
-                    std::vector<ScratchData> ElementVector = std::get<std::vector<ScratchData>>(this->Elements);
+                    std::vector<ScratchData> & ElementVector = std::get<std::vector<ScratchData>>(this->Elements);
                     ElementVector.clear();
-                    this->DitchCache = true;
+                    this->TotalItems = 0;
+                    this->LazyLoad = false;
                     return;
                 }
                 uint8_t * Buffer = std::get<uint8_t *>(this->Elements);
-                memset(Buffer, 0, this->TotalItems);
+                memset(Buffer, 0, this->Size);
+                this->TotalItems = 0;
             }
 
-            inline ScratchData __hot Get(size_t ItemIndex) {
-                const size_t Index = ItemIndex - 1;
-                if (Index >= this->TotalItems) {
-                    return ScratchData("");
+            ScratchData __hot Get(const size_t Index) {
+                if (unlikely(Index >= this->TotalItems)) {
+                    return std::string();
                 }
                 if (std::holds_alternative<std::vector<ScratchData>>(this->Elements)) {
-                    std::vector<ScratchData> Cache = std::get<std::vector<ScratchData>>(this->Elements);
-                    if (unlikely(Index >= Cache.size())) {
+                    std::vector<ScratchData> & ListVector = std::get<std::vector<ScratchData>>(this->Elements);
+                    if (this->LazyLoad == true) {
+                        if (likely(Index < ListVector.size())) {
+                            /* cache HIT */
+                            //DebugInfo("CACHE HIT\n");
+                            return ListVector.at(Index);
+                        }
                         /* cache miss */
                         ondemand::parser JsonParser;
                         auto DataArray = JsonParser.iterate(this->ListJson);
@@ -435,53 +478,92 @@ SkipChecks:
                         TachyonAssert(DataArray.at(Index).get(RawData) == error_code::SUCCESS);
 
                         ScratchData Data = SanitizeData(RawData);
-                        Cache.insert(Cache.begin() + Index, Data);
+                        ListVector.resize(Index + 1);
+                        ListVector.insert(ListVector.begin() + Index, Data);
+                        //DebugInfo("CACHE MISS\n");
                         return Data;
                     }
-                    /* cache HIT */
-                    return Cache.at(Index);
+                    /* lazy load off = all items loaded in the vector */
+                    return ListVector.at(Index);
                 } else {
                     uint8_t * Buffer = std::get<uint8_t *>(this->Elements);
-                    return ScratchData(double(Buffer[Index]));
+                    return double(Buffer[Index]);
                 }
-                return ScratchData("");
+                __unreachable;
             }
 
-            inline void __hot Set(ScratchData Data, size_t ItemIndex) {
-                const size_t Index = ItemIndex - 1;
-                if (Index >= this->TotalItems) {
+            void __hot Set(const ScratchData && Data, const size_t Index) {
+                if (unlikely(Index >= this->TotalItems)) {
                     return;
                 }
                 if (std::holds_alternative<std::vector<ScratchData>>(this->Elements)) {
-                    std::vector<ScratchData> & Cache = std::get<std::vector<ScratchData>>(this->Elements);
-                    if (unlikely(Index >= Cache.size())) {
-                        Cache.resize(Index);
-                        Cache.insert(Cache.begin() + Index, Data);
+                    std::vector<ScratchData> & ListVector = std::get<std::vector<ScratchData>>(this->Elements);
+                    if (this->LazyLoad == true) {
+                        if (likely(Index < ListVector.size())) {
+                            ListVector[Index] = Data;
+                            return;
+                        }
+                        ListVector.resize(Index);
+                        ListVector.insert(ListVector.begin() + Index, Data);
                         return;
                     }
-                    Cache[Index] = Data;
+                    ListVector[Index] = Data;
                     return;
                 }
                 uint8_t * Buffer = std::get<uint8_t *>(this->Elements);
-                if (unlikely(Data.Type != ScratchData::Type::Number && Data.Number > 255)) {
+                if (unlikely(Data.Type != ScratchData::Type::Number || Data.Number > 255)) {
                     DebugWarn("If you're going to write data into the buffer, please write a number value under 256, otherwise nothing will be written to the buffer.\n");
                 }
-                Buffer[Index] = (uint8_t)Data.Number;
+                Buffer[Index] = uint8_t(Data.Number);
             }
 
-            inline void __hot Append(ScratchData Data) {
+            void __hot Append(const ScratchData && Data) {
                 if (std::holds_alternative<std::vector<ScratchData>>(this->Elements)) {
-                    std::vector<ScratchData> ElementVector = std::get<std::vector<ScratchData>>(this->Elements);
-                    ElementVector.push_back(Data);
+                    /* lazy loading is no longer useful */
+                    std::vector<ScratchData> & ListVector = std::get<std::vector<ScratchData>>(this->Elements);
+
+                    if (this->LazyLoad == true) {
+                        this->TotalItems++;
+
+                        ListVector.clear();
+                        ListVector.resize(this->TotalItems);
+
+                        ondemand::parser JsonParser;
+                        simdjson::simdjson_result DataDoc = JsonParser.iterate(this->ListJson);
+                        TachyonAssert(DataDoc.error() == error_code::SUCCESS);
+                        ondemand::array DataArray;
+                        TachyonAssert(DataDoc.get_array().get(DataArray) == error_code::SUCCESS);
+
+                        size_t i = 0;
+                        for(auto Value : DataArray) {
+                            ondemand::value RawData;
+                            TachyonAssert(Value.get(RawData) == error_code::SUCCESS);
+                        
+                            ScratchData Item = SanitizeData(RawData);
+
+                            ListVector.insert(ListVector.begin() + i, Item);
+                            i++;
+                        }
+                        ListVector.insert(ListVector.begin() + this->TotalItems - 1, Data);
+                        this->LazyLoad = false;
+                        return;
+                    }
+                    this->TotalItems++;
+                    if (this->TotalItems > this->Size) {
+                        this->Size++;
+                    }
+                    ListVector.resize(this->TotalItems);
+                    ListVector.insert(ListVector.begin() + this->TotalItems - 1, Data);
                     return;
                 }
                 DebugWarn("Cannot append items to buffer.\n");
             }
             size_t TotalItems = 0;
+            size_t Size = 0;
         private:
-            padded_string ListJson;
-            bool DitchCache;
             std::variant<std::vector<ScratchData>, uint8_t *> Elements;
+            padded_string ListJson;
+            bool LazyLoad;
     };
 
     namespace Data {

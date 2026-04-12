@@ -1,12 +1,8 @@
 #pragma once
 
-#include <cstdint>
-
 namespace Scratch {
 
-    namespace Operator {
-        enum class MathOperation : uint8_t { MathInvalid, MathFloor };
-        
+    namespace Operator {        
         void RegisterAll(void);
     };
 };
