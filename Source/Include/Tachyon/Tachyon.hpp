@@ -3,7 +3,7 @@
 #include <Scratch/Procedures.hpp>
 #include <Scratch/Common.hpp>
 #include <Scratch/Blocks.hpp>
-#include <Compiler.hpp>
+#include <Common.hpp>
 #include <string_view>
 #include <cstdint>
 
@@ -29,7 +29,6 @@ namespace Tachyon {
         Scratch::ScratchProject * Project = nullptr;
         SDL_Window * TachyonWindow = nullptr;
         SDL_Renderer * TachyonRenderer = nullptr;
-        double Timer = 0;
         TachyonConfig Configuration;
         bool ShouldExit = false;
         bool RendererUpdate = false;

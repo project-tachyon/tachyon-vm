@@ -1,4 +1,4 @@
-#include "Compiler.hpp"
+#include "Common.hpp"
 #include "Scratch/Data.hpp"
 #include <Scratch/Common.hpp>
 #include <Scratch/ControlFlow.hpp>

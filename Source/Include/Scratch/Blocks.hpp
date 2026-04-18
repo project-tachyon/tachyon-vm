@@ -4,7 +4,7 @@
 #include <Scratch/BlockFields.hpp>
 #include <Scratch/Data.hpp>
 #include <Lib/SIMDJson.h>
-#include <Compiler.hpp>
+#include <Common.hpp>
 #include <string>
 
 using namespace simdjson;

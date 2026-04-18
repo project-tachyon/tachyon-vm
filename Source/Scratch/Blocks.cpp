@@ -4,7 +4,7 @@
 #include <Scratch/Blocks.hpp>
 #include <Scratch/Common.hpp>
 #include <Lib/SIMDJson.h>
-#include <Compiler.hpp>
+#include <Common.hpp>
 #include <unordered_set>
 
 using namespace simdjson;

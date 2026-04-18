@@ -7,7 +7,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(TACHYON_SOURCE "${CMAKE_SOURCE_DIR}/Source")
 
 file(GLOB_RECURSE CPP_SRC FOLLOW_SYMLINKS "${TACHYON_SOURCE}/*.cpp")
-list(FILTER CPP_SRC EXCLUDE REGEX ".*/Libraries/AsmJit/.*")
 
 add_executable(tachyon ${CPP_SRC})
 
@@ -29,9 +28,4 @@ target_compile_options(tachyon PRIVATE
     -O3
 )
 
-# AsmJit
-add_subdirectory("${TACHYON_SOURCE}/Libraries/AsmJit")
-set(ASMJIT_STATIC ON)
-set(ASMJIT_NOT_ASMJIT_INIT ON)
-
-target_link_libraries(tachyon PRIVATE SDL3 zip asmjit)
+target_link_libraries(tachyon PRIVATE SDL3 zip)

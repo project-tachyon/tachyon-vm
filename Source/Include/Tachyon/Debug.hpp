@@ -1,6 +1,7 @@
 #pragma once
 
-#include <Compiler.hpp>
+#include <exception>
+#include <Common.hpp>
 
 /* some parts taken from lk and ppsspp (thanks :>) */
 

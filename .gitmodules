@@ -1,3 +1,0 @@
-[submodule "Source/Libraries/AsmJit"]
-	path = Source/Libraries/AsmJit
-	url = https://github.com/asmjit/asmjit
