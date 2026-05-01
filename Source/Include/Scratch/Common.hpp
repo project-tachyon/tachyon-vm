@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Tachyon/Encoder.hpp"
 #include <Tachyon/Debug.hpp>
 #include <Scratch/Procedures.hpp>
 #include <Scratch/Motion.hpp>
@@ -49,6 +50,7 @@ namespace Scratch {
         std::vector<ProcedureBindings> ParamBindings;
         ScratchSprite * Sprite;
         ScratchStatus CurrentStatus;
+        Tachyon_VMState State;
         uint8_t ControlFlags;
     };
 

@@ -9,6 +9,12 @@
 
 using namespace std;
 
+// for compiler testing
+int main(int argc, char * argv[]) {
+    Tachyon_AMD64Encoder Encoder;
+    return 0;
+}
+
 // int main(int argc, char * argv[]) {
 //     cout << "Tachyon: the faster replacement for TurboWarp" << endl;
 //     /* check for potential file */
@@ -39,10 +45,3 @@ using namespace std;
 //     return 0;
 //     /* global deconstructors do most of the project memory deallocation work for us */
 // }
-
-int main(int argc, char * argv[]) {
-    Tachyon_AMD64Encoder Encoder;
-    Encoder.MovRM_IMM64(Reg::REG_RAX, -1LU);
-    Encoder.Ret();
-    return 0;
-}
