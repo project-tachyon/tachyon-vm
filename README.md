@@ -1,21 +1,19 @@
-# The Tachyon VM
-Tachyon VM is a reimplementation of the Scratch VM written in C++ and SDL3. It aims to be the killer of any Scratch mod/runtime that currently exists. (I'm looking at you ScratchEverywhere)
+# Tachyon VM
+Tachyon VM is a reimplementation of the Scratch VM written in C++ and SDL3. It aims to be the killer of any Scratch mod/runtime that currently exists.
 
-# What makes this VM so great?
-Tachyon VM utilizes modern SIMD features during JSON parsing, and during runtime to give a smooth experience when running big or small projects. Not only that, the VM makes use of compiler optimizations such as compiling with ``-O3``, using the hot attribute for improved CPU cache locality and more aggresive function optimizations, and ``likely()`` and ``unlikely()`` macros for improved CPU branch predictions.
+# Compiling the VM
+To compile the Tachyon VM, you first need to perform the following prerequisites:
+1. Install Clang (for Windows systems, install it through MinGW and add it to your PATH). MSVC tools will **not** work.
+2. Install the required libraries for Tachyon's VM
 
-# What can the VM do as of right now?
-The VM can currently load huge Scratch projects in under 1 second (result given when testing Linux On Scratch).
+Let us start with installing the required libraries for Tachyon's VM.
 
-# Compiling Tachyon
-To compile Tachyon, you need to install a C++ compiler such as clang or g++, and libzip.\
-To install libzip, run the command that is right for your Operating System:
-## Linux
-Debian/Ubuntu: ``sudo apt install libzip-dev``\
-Fedora/RHEL: ``sudo dnf install libzip-devel``\
-Arch Linux: ``sudo pacman -S libzip``
-## MacOS
-Homebrew: ``brew install libzip``
+## Installing necessary libraries
+Tachyon's VM requires SDL3, and libzip to be installed in order to compile successfully. To install the libraries, follow the directions below:
 
-After libzip is installed on your system, simply run the following command: ``make``\
-To clean the source tree of object files and such, run the following command: ``make clean``
+1. Clone the repository along with it's submodules.
+2. Run ``.\vcpkg\bootstrap-vcpkg.bat`` for Windows systems, or ``./vcpkg/bootstrap-vcpkg.sh`` for UNIX-esque systems to install the package manager required to install the project's libraries
+3. Then, run ``vcpkg integrate install`` to be able to install libraries system-wide.
+4. Now, you can install the two dependencies: ``vcpkg install sdl3:x64-windows libzip:x64-windows`` for Windows systems, or ``vcpkg install sdl3:x64-linux libzip:x64-linux`` for UNIX-esque systems.
+
+Now that you've got that done, you may now run ``cmake`` to build the Tachyon's VM.

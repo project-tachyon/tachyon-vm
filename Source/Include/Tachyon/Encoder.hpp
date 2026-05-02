@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Tachyon/Debug.hpp>
-#include <sys/mman.h>
+#include <Tachyon/ExMem.hpp>
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
@@ -38,19 +38,20 @@ class Tachyon_EncoderImpl {
     public:
         Tachyon_EncoderImpl() {
             CodeSize = 4096;
-            CodeBase = mmap(0, CodeSize, (PROT_WRITE | PROT_READ), (MAP_PRIVATE | MAP_ANON), -1, 0);
-            TachyonAssert(CodeBase != MAP_FAILED);
+            CodeBase = Tachyon::AllocateCodeMemory(CodeSize);
+            TachyonAssert(CodeBase != nullptr);
             CodePointer = static_cast<uint8_t *>(CodeBase);
             DebugInfo("JIT compiler allocated code range: [%p - %p]\n", CodeBase, CodePointer + CodeSize);
         }
+
         inline OutputCode MakeExecutable(void) {
-            TachyonAssert(mprotect(CodeBase, CodeSize, (PROT_EXEC | PROT_READ)) != -1);
+            TachyonAssert(Tachyon::ProtectCodeMemory(CodeBase, CodeSize) == true);
             return (OutputCode)CodeBase;
         }
 
 };
 
-#ifdef __x86_64
+#if defined(__x86_64__) || defined(_M_AMD64)
 class GpReg {
     public:
         enum RegisterKind : uint8_t {

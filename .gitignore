@@ -1,6 +1,5 @@
-# C++ files
-*.o
-*.out
-
-# Tachyon
-tachyon
+# Build files
+build
+out
+# Visual Studio
+.vs

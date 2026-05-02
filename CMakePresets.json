@@ -1,0 +1,52 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "win64-release",
+      "displayName": "Windows x64 Release",
+      "description": "Target Windows with the Visual Studio development environment.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/install/${presetName}",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/vcpkg/installed/x64-windows/",
+        "CMAKE_C_COMPILER": "clang.exe",
+        "CMAKE_CXX_COMPILER": "clang++.exe"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux64-release",
+      "displayName": "Linux x64 Release",
+      "description": "Target Linux systems.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/vcpkg/installed/x64-linux/share/",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioRemoteSettings/CMake/2.0": {
+          "remoteSourceRootDir": "$env{HOME}/.vs/$ms{projectDirName}"
+        }
+      }
+    }
+  ]
+}

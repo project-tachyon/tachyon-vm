@@ -1,17 +1,16 @@
 #include <Tachyon/Encoder.hpp>
 #include <Tachyon/Debug.hpp>
-#include <SDL3/SDL_error.h>
-#include <SDL3/SDL_events.h>
-#include <SDL3/SDL_keycode.h>
 #include <Scratch/Common.hpp>
 #include <Tachyon/Tachyon.hpp>
 #include <iostream>
 
-using namespace std;
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
 // for compiler testing
 int main(int argc, char * argv[]) {
     Tachyon_AMD64Encoder Encoder;
+    std::cout << "Tachyon lives on!" << std::endl;
     return 0;
 }
 
